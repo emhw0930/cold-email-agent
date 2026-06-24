@@ -1,0 +1,30 @@
+# ── Secrets & credentials (NEVER commit) ──────────────────────
+.env
+assets/gmail_credentials.json
+assets/gmail_token.json
+assets/sheets_service_account.json
+assets/*.json
+
+# ── Personal documents ────────────────────────────────────────
+assets/resume.pdf
+assets/cover_letter.pdf
+
+# ── Python ────────────────────────────────────────────────────
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# ── Logs ──────────────────────────────────────────────────────
+logs/
+*.log
+
+# ── OS / editor ───────────────────────────────────────────────
+.DS_Store
+.idea/
+.vscode/
+
+# Claude Code local settings
+.claude/

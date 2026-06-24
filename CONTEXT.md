@@ -1,0 +1,75 @@
+# CONTEXT.md — Instructions for Claude (Cowork)
+
+This file tells you (Claude, running in Cowork) how to operate this project when the user
+gives you a company + job description. Read this first, then follow the workflow.
+
+---
+
+## What this project is
+A human-in-the-loop cold-outreach tool. The user applies to a job, then pastes the
+**company name + job description (JD)** to you. Your job: find the right people, write
+tailored emails referencing the user's resume, get approval, send, and log.
+
+- Code lives in `src/`. Secrets/config in `.env` (loaded by `src/config.py`).
+- The user's resume is at `assets/resume.pdf` (attached automatically on every send).
+- Every send is logged to Google Sheets.
+- **Always run Python from the repo root** with the venv active:
+  `source venv/bin/activate` then `python src/<module>.py`.
+
+---
+
+## The workflow (when the user pastes a company + JD)
+
+**a. Confirm eligibility & fit.**
+   - Check the JD for location/eligibility restrictions (e.g. "not eligible in CA, NY, PA…").
+     The user's resume location is **Atlanta, GA** — flag any conflict before proceeding.
+   - Note the exact **role title** and **team** (you'll reference these in the email).
+
+**b. Determine the company's email pattern (ONCE).**
+   - Use Prospeo to reveal 1–2 *verified* emails for that company to learn the format
+     (patterns vary: `first.last@`, `flast@`, `firstl@`). Use `src/prospeo_lookup.py`.
+
+**c. Find the right people (US-based).**
+   - Search Prospeo for **US-based recruiters** (technical/university recruiters fit SWE roles)
+     and, when asked, **hiring managers** on the JD's specific team.
+   - Filter to `person_location_search: {include: ["United States"]}`.
+   - **Only use Prospeo-VERIFIED emails** — `UNAVAILABLE` means the person likely left;
+     guessed/pattern emails to them bounce. If the user insists on someone unverified,
+     warn about bounce risk first.
+   - Verify a hiring manager's team on LinkedIn (web search) before recommending them —
+     don't email someone on the wrong team.
+
+**d. Draft a tailored email per person.**
+   - Use `src/email_generator.py` (Claude) or write it directly. Keep it ~100–120 words.
+   - Tie the user's resume specifics to the JD (e.g. messaging-app project ↔ messaging role,
+     LangGraph/AI agent work ↔ AI roles, GCP/FastAPI ↔ backend/cloud roles).
+   - Lead with **UC Berkeley CS** + **Genuine Parts Company (Fortune 200)**.
+   - Signature: name, phone, **both emails** (gmail + berkeley), LinkedIn. **No GitHub.**
+   - Do **not** mention H1B unless the user confirms the company sponsors.
+
+**e. Show the draft(s) and WAIT for approval.**
+   - Always preview before sending. Let the user edit wording, recipients, count.
+
+**f. Send + log.**
+   - On approval, send with resume attached and log each to the Google Sheet.
+   - Dedup is by **recipient email** — the same person won't be emailed twice, but multiple
+     people for one role is fine.
+
+**g. Report results + watch for bounces.**
+   - Summarize who was emailed. Tell the user to watch for bounce-backs (only relevant if
+     any unverified addresses were used).
+
+---
+
+## Defaults & preferences (the user, Ethan Wu)
+- New-grad SWE, needs H1B sponsorship, based in Atlanta GA (eligible for most US-remote roles).
+- Email tone: concise, professional, specific. No buzzwords, no "I hope this finds you well."
+- Prefers **quality over volume** — targeted, verified, tailored. 5–10 contacts per role is plenty.
+- Resume highlights to draw from: UC Berkeley CS; GPC (LangGraph AI agent, Google ADK, FastAPI/
+  Spring Boot, GCP — Cloud Run/BigQuery/GCS, React/TypeScript); full-stack Socket.IO messaging app.
+
+## Guardrails
+- Never commit or paste secrets. They live only in `.env` (gitignored).
+- Never send without showing a preview and getting an explicit "send".
+- Prefer verified emails; warn before sending to guessed/pattern addresses.
+- Respect Prospeo's free-tier credits (~75/month) — don't reveal more emails than needed.

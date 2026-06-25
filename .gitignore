@@ -28,3 +28,7 @@ logs/
 
 # Claude Code local settings
 .claude/
+
+# Resume source files (personal info)
+*.tex
+resume_updated.tex

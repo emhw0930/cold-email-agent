@@ -25,9 +25,17 @@ tailored emails referencing the user's resume, get approval, send, and log.
      The user's resume location is **Atlanta, GA** — flag any conflict before proceeding.
    - Note the exact **role title** and **team** (you'll reference these in the email).
 
-**b. Determine the company's email pattern (ONCE).**
-   - Use Prospeo to reveal 1–2 *verified* emails for that company to learn the format
-     (patterns vary: `first.last@`, `flast@`, `firstl@`). Use `src/prospeo_lookup.py`.
+**b. Determine the company's email pattern (ONCE) — then GUESS the rest to save Prospeo credits.**
+   - **Reveal only ONE verified email** via Prospeo to learn the company's format
+     (patterns vary: `first.last@`, `flast@`, `firstname@`, `lastname.first@`, and the
+     domain may differ, e.g. `@bloomberg.net`, `@qti.qualcomm.com`).
+   - Then get the remaining recruiter **names** from Prospeo *search* (cheap, no reveal) or
+     web search, and **construct their emails from the confirmed pattern** — do NOT spend a
+     Prospeo enrich credit per person. The free tier is ~75 credits/month, so one reveal +
+     pattern-guessing the rest is the default.
+   - Caveat: pattern-guessing bounces if the pattern is inconsistent (Uber/Qualcomm use
+     several formats) or the person left the company. If a company's format looks
+     inconsistent, fall back to revealing verified emails for the few that matter.
 
 **c. Find the right people (US-based).**
    - Search Prospeo for **US-based recruiters** (technical/university recruiters fit SWE roles)
@@ -69,6 +77,7 @@ tailored emails referencing the user's resume, get approval, send, and log.
   Spring Boot, GCP — Cloud Run/BigQuery/GCS, React/TypeScript); full-stack Socket.IO messaging app.
 
 ## Guardrails
+- **ALWAYS give the user a look at the email before you send. Show the full draft(s) and wait for an explicit "send" — no exceptions.**
 - Never commit or paste secrets. They live only in `.env` (gitignored).
 - Never send without showing a preview and getting an explicit "send".
 - Prefer verified emails; warn before sending to guessed/pattern addresses.

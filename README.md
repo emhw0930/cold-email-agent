@@ -95,6 +95,15 @@ python src/outreach.py --company <domain> --title "<job title>" --jd <jd.txt> [-
 - De-duplicates by recipient — won't email the same person twice, but lets you reach
   multiple people for one role.
 
+### LangGraph workflow (same flow, graph-orchestrated)
+A LangGraph version of the pipeline with a real human-in-the-loop `interrupt()` for the
+approval step. Email generation runs on Claude via `langchain-anthropic`.
+```bash
+python src/graph_workflow.py --company twilio.com --title "Software Engineer (L1)" --jd jd.txt --max 5          # preview (stops at review)
+python src/graph_workflow.py --company twilio.com --title "Software Engineer (L1)" --jd jd.txt --max 5 --send   # approve + send
+```
+Graph: `find_recruiters → generate_emails → human_review (interrupt) → send_and_log`
+
 ### Batch job discovery (optional)
 ```bash
 python src/main.py --dry-run --max 5     # preview
@@ -117,6 +126,7 @@ python src/main.py --max 5               # send
 |------|---------|
 | `src/config.py` | Loads config/secrets from `.env` |
 | `src/outreach.py` | Targeted, human-in-the-loop outreach CLI |
+| `src/graph_workflow.py` | LangGraph version of the pipeline (Claude via langchain-anthropic) |
 | `src/main.py` | Batch job-discovery pipeline |
 | `src/prospeo_lookup.py` | Recruiter search + verified-email reveal |
 | `src/email_generator.py` | Claude-generated tailored emails |

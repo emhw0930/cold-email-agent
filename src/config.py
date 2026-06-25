@@ -70,6 +70,8 @@ JOB_SEARCH_TERMS = [
 JOB_LOCATIONS = ["United States"]
 
 # ── Email Settings ───────────────────────────────────────────
+# Model used for email generation (bulk → Haiku by default; override in .env)
+EMAIL_MODEL = _optional("EMAIL_MODEL", "claude-haiku-4-5")
 EMAIL_SEND_DELAY_SECONDS = int(_optional("EMAIL_SEND_DELAY_SECONDS", "5"))
 DRY_RUN = _optional("DRY_RUN", "false").lower() in ("1", "true", "yes")
 # Only send to Prospeo-VERIFIED emails (avoids bounces from stale/guessed addresses)

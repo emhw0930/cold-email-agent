@@ -1,27 +1,17 @@
-# H1B Job Outreach Agent
+# Cold Email Agent
 
-A tool that finds recruiters/hiring managers at companies you've applied to and sends
-tailored cold emails with your resume attached — logging every send to Google Sheets.
+Find the right recruiters at a company you've applied to, write a tailored cold email to
+each (with your résumé attached), preview before sending, and log every send to a Google
+Sheet.
 
-Built for a **human-in-the-loop** workflow: it drafts and previews emails so you review
-before anything is sent. High-quality, personalized outreach beats spray-and-pray.
-
----
-
-## What it does
+Built **human-in-the-loop**: it drafts and shows you each email so nothing goes out without
+your OK. Personalized outreach beats spray-and-pray.
 
 ```
-Find recruiters → Reveal verified emails → Generate tailored email → Preview → Send → Log
-   (Prospeo)          (Prospeo)               (Claude)               (you)    (Gmail)  (Sheets)
+Find recruiters → get their emails → draft a tailored email → preview → send → log
+   (Prospeo)        (Prospeo /        (Claude)              (you)    (Gmail)  (Sheets)
+                     known pattern)
 ```
-
-- **Prospeo** — finds US-based recruiters/managers and reveals *verified* emails (avoids bounces)
-- **Claude** — writes a concise, tailored email per recipient from the job description + your resume
-- **Gmail API** — sends with your resume attached
-- **Google Sheets** — logs each outreach and de-duplicates by recipient
-
-There's also a `main.py` batch pipeline that auto-discovers fresh H1B-sponsoring jobs via
-LinkedIn/Indeed scraping — but the **`outreach.py`** targeted flow is the recommended path.
 
 ---
 
@@ -32,79 +22,48 @@ LinkedIn/Indeed scraping — but the **`outreach.py`** targeted flow is the reco
 python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 
-# 2. Configure secrets (NEVER commit .env)
-cp .env.example .env          # then edit .env with your keys/profile
+# 2. Configure (see docs/SETUP.md for where each value comes from)
+cp .env.example .env          # fill in your keys + profile
+#   assets/gmail_credentials.json      (Gmail OAuth)
+#   assets/sheets_service_account.json (Sheets)
+#   assets/resume.pdf                  (your résumé)
 
-# 3. Add credentials & resume to assets/  (see Setup below)
-#    assets/gmail_credentials.json
-#    assets/sheets_service_account.json
-#    assets/resume.pdf
+# 3. Preview outreach for a role (no emails sent)
+python src/outreach.py --company stripe.com --title "Software Engineer" --max 5
 
-# 4. Preview outreach for a company (no emails sent)
-python src/outreach.py --company twilio.com --title "Software Engineer (L1)" --jd jd.txt --max 5
-
-# 5. Send for real
-python src/outreach.py --company twilio.com --title "Software Engineer (L1)" --jd jd.txt --max 5 --send
+# 4. Send for real
+python src/outreach.py --company stripe.com --title "Software Engineer" --max 5 --send
 ```
 
-First send opens a browser once for Gmail OAuth; the token is cached afterward.
+First send opens a browser once for Gmail consent; the token is cached afterward.
+
+**Full setup walkthrough → [docs/SETUP.md](docs/SETUP.md)**
 
 ---
 
-## Configuration
+## The three ways to run it
 
-All secrets and your profile live in `.env` (loaded by `config.py`). See `.env.example`
-for the full list. Key fields:
-
-| Variable | What it is |
-|----------|-----------|
-| `ANTHROPIC_API_KEY` | Claude API key (email generation) |
-| `PROSPEO_API_KEY` | Prospeo key (recruiter email lookup) |
-| `SENDER_EMAIL` | Gmail address you send from |
-| `SHEETS_SPREADSHEET_ID` | Target Google Sheet ID |
-| `YOUR_NAME` / `YOUR_PHONE` / `YOUR_LINKEDIN` | Signature fields |
-| `YOUR_EMAIL_PRIMARY` / `YOUR_EMAIL_ALT` | Emails shown in the signature |
-| `VERIFIED_ONLY` | `true` (default) = only send to Prospeo-verified emails |
-| `DRY_RUN` | `true` = never actually send |
-
----
-
-## Setup (one-time)
-
-Detailed step-by-step (Google Cloud, Gmail OAuth, Sheets service account, Prospeo) is in
-[docs/SETUP.md](docs/SETUP.md). Summary:
-
-1. **Anthropic** — create an API key, put it in `.env`
-2. **Prospeo** — create an API key (free tier ~75 credits/mo), put it in `.env`
-3. **Gmail** — create a Desktop OAuth client, download JSON → `assets/gmail_credentials.json`,
-   add your address as a test user on the OAuth consent screen
-4. **Google Sheets** — create a service account, download JSON → `assets/sheets_service_account.json`,
-   create a sheet, share it with the service-account email (Editor), put the sheet ID in `.env`
-5. **Resume** — drop `assets/resume.pdf`
-
----
-
-## Usage
-
-### Targeted outreach (recommended)
+### 1. Targeted outreach — `src/outreach.py` (recommended)
+You applied to a role; reach a few recruiters there.
 ```bash
-python src/outreach.py --company <domain> --title "<job title>" --jd <jd.txt> [--max N] [--send]
+python src/outreach.py --company <domain> --title "<job title>" [--jd jd.txt] [--max N] [--send]
 ```
 - Defaults to **preview** (safe). Add `--send` to actually send.
-- Only sends to **Prospeo-verified** emails by default (no bounces). Use `--allow-unverified` to override.
-- De-duplicates by recipient — won't email the same person twice, but lets you reach
-  multiple people for one role.
+- Only sends to **Prospeo-verified** emails by default (avoids bounces);
+  `--allow-unverified` to override.
+- De-duplicates by recipient — won't email the same person twice.
 
-### LangGraph workflow (same flow, graph-orchestrated)
-A LangGraph version of the pipeline with a real human-in-the-loop `interrupt()` for the
-approval step. Email generation runs on Claude via `langchain-anthropic`.
+### 2. LangGraph workflow — `src/graph_workflow.py`
+The same pipeline as a graph, with a real human-in-the-loop `interrupt()` at the review step.
 ```bash
-python src/graph_workflow.py --company twilio.com --title "Software Engineer (L1)" --jd jd.txt --max 5          # preview (stops at review)
-python src/graph_workflow.py --company twilio.com --title "Software Engineer (L1)" --jd jd.txt --max 5 --send   # approve + send
+python src/graph_workflow.py --company stripe.com --title "Software Engineer" --max 5         # preview
+python src/graph_workflow.py --company stripe.com --title "Software Engineer" --max 5 --send  # approve + send
 ```
-Graph: `find_recruiters → generate_emails → human_review (interrupt) → send_and_log`
+`find_recruiters → generate_emails → human_review (interrupt) → send_and_log`
 
-### Batch job discovery (optional)
+### 3. Batch discovery — `src/main.py` (optional)
+Auto-discovers fresh H1B-sponsoring entry-level jobs (LinkedIn/Indeed scraping) and runs the
+pipeline across them.
 ```bash
 python src/main.py --dry-run --max 5     # preview
 python src/main.py --max 5               # send
@@ -112,33 +71,63 @@ python src/main.py --max 5               # send
 
 ---
 
-## Security
+## Project structure
 
-- **Secrets are never committed** — `.env` and `assets/*.json` are gitignored.
-- If a key is ever exposed, rotate it immediately (Anthropic / Prospeo / Google consoles).
-- Gmail scope is limited to **send-only**.
+```
+cold-email-agent/
+├── README.md              ← you are here
+├── .env.example           ← copy to .env; all secrets live in .env (gitignored)
+├── requirements.txt
+├── assets/                ← gitignored: OAuth JSON, service account, resume.pdf
+├── data/
+│   └── h1b_sponsors.json  ← employer → approx. annual H-1B approvals (sponsor signal)
+├── docs/
+│   ├── SETUP.md           ← one-time setup (API keys, OAuth, Sheets)
+│   ├── AGENT.md           ← how to drive this with Claude / Cowork
+│   └── PROMPTS.md         ← ready-to-paste prompts for an AI assistant
+└── src/
+    ├── config.py          ← loads config/secrets from .env
+    ├── outreach.py        ← targeted, human-in-the-loop CLI  (start here)
+    ├── graph_workflow.py  ← LangGraph version of the pipeline
+    ├── main.py            ← batch job-discovery pipeline
+    ├── job_discovery.py   ← LinkedIn/Indeed scraping + H1B filtering
+    ├── prospeo_lookup.py  ← recruiter search + verified-email reveal
+    ├── email_generator.py ← Claude-written tailored emails
+    ├── gmail_sender.py    ← Gmail send + résumé attachment + OAuth
+    └── sheets_logger.py   ← Google Sheets logging + dedup
+```
 
 ---
 
-## Project structure
+## Configuration
 
-| File | Purpose |
-|------|---------|
-| `src/config.py` | Loads config/secrets from `.env` |
-| `src/outreach.py` | Targeted, human-in-the-loop outreach CLI |
-| `src/graph_workflow.py` | LangGraph version of the pipeline (Claude via langchain-anthropic) |
-| `src/main.py` | Batch job-discovery pipeline |
-| `src/prospeo_lookup.py` | Recruiter search + verified-email reveal |
-| `src/email_generator.py` | Claude-generated tailored emails |
-| `src/gmail_sender.py` | Gmail send + resume attachment + OAuth |
-| `src/sheets_logger.py` | Google Sheets logging + dedup |
-| `src/job_discovery.py` | LinkedIn/Indeed scraping (batch mode) |
+Everything lives in `.env` (loaded by `src/config.py`); see `.env.example` for the full list.
+
+| Variable | What it is |
+|----------|-----------|
+| `ANTHROPIC_API_KEY` | Claude API key (writes emails) |
+| `PROSPEO_API_KEY` | Prospeo key (recruiter email lookup) |
+| `SENDER_EMAIL` | Gmail address you send from |
+| `SHEETS_SPREADSHEET_ID` | Target Google Sheet ID |
+| `YOUR_NAME` / `YOUR_PHONE` / `YOUR_LINKEDIN` | Signature fields |
+| `YOUR_EMAIL_PRIMARY` / `YOUR_EMAIL_ALT` | Emails shown in the signature |
+| `EMAIL_MODEL` | Claude model for generation (default `claude-haiku-4-5`) |
+| `VERIFIED_ONLY` | `true` (default) = only send to Prospeo-verified emails |
+| `DRY_RUN` | `true` = never actually send |
+
+---
+
+## Security
+
+- **Secrets are never committed** — `.env` and `assets/*.json` / `assets/resume.pdf` are gitignored.
+- Gmail scope is limited to **send-only**.
+- If a key is ever exposed, rotate it immediately (Anthropic / Prospeo / Google consoles).
 
 ---
 
 ## Notes & limits
 
-- **Prospeo free tier** ≈ 75 verified emails/month. Email formats vary, so always rely on
-  *verified* status rather than guessing patterns (guessed addresses bounce).
+- **Prospeo free tier** ≈ 75 credits/month. Prefer *verified* emails; guessed/pattern
+  addresses can bounce. See [docs/AGENT.md](docs/AGENT.md) for the one-reveal-then-pattern strategy.
 - **Gmail free tier** allows 500 sends/day.
-- This tool sends real emails to real people — keep it targeted and personalized.
+- This sends real email to real people — keep it targeted and personalized.

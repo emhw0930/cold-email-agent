@@ -73,7 +73,7 @@ Email: {config.YOUR_EMAIL_PRIMARY}{(' | ' + config.YOUR_EMAIL_ALT) if config.YOU
 LinkedIn: {config.YOUR_LINKEDIN}"""
 
     response = _get_client().messages.create(
-        model="claude-haiku-4-5-20251001",   # fast + cheap for bulk generation
+        model=config.EMAIL_MODEL,   # configurable via EMAIL_MODEL in .env
         max_tokens=400,
         system=_SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_prompt}],

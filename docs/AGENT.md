@@ -1,4 +1,4 @@
-# CONTEXT.md — Instructions for Claude (Cowork)
+# AGENT.md — How to drive this tool with Claude / Cowork
 
 This file tells you (Claude, running in Cowork) how to operate this project when the user
 gives you a company + job description. Read this first, then follow the workflow.

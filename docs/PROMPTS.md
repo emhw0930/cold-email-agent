@@ -17,8 +17,9 @@ Role:    <EXACT JOB TITLE> on the <TEAM> team
 JD:
 <PASTE FULL JOB DESCRIPTION HERE>
 
-Find 5–10 US-based recruiters/early-career/campus recruiters (and a hiring
-manager on this team if obvious). FIRST find the company's email pattern ONLINE
+Automatically find 10 US-based recruiters/early-career/campus recruiters (and a
+hiring manager on this team if obvious) — don't wait to be asked for the count.
+FIRST find the company's email pattern ONLINE
 (web search / known formats) and use that to construct the addresses. Only if I
 tell you the pattern is wrong (bounces), spend ONE Prospeo reveal to determine
 the correct pattern, then reconstruct the rest from it. Draft a ~100–120 word

@@ -38,6 +38,10 @@ tailored emails referencing the user's resume, get approval, send, and log.
      inconsistent, fall back to revealing verified emails for the few that matter.
 
 **c. Find the right people (US-based).**
+   - **Default: whenever a JD comes in, automatically find 10 US-based recruiters online**
+     (LinkedIn / web search) for that role — no need to be asked. Prioritize
+     technical/university/early-career recruiters. If fewer than 10 are publicly reachable,
+     surface as many good-fit names as you can find and say so.
    - Search Prospeo for **US-based recruiters** (technical/university recruiters fit SWE roles)
      and, when asked, **hiring managers** on the JD's specific team.
    - Filter to `person_location_search: {include: ["United States"]}`.

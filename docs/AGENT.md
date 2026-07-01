@@ -53,6 +53,9 @@ tailored emails referencing the user's resume, get approval, send, and log.
      LangGraph/AI agent work ↔ AI roles, GCP/FastAPI ↔ backend/cloud roles).
    - Lead with **UC Berkeley CS** + **Genuine Parts Company (Fortune 200)**.
    - Signature: name, phone, **both emails** (gmail + berkeley), LinkedIn. **No GitHub.**
+   - **Always include the job number / requisition ID in the email if the JD has one**
+     (e.g. "Job 210759344", "Role #200669637") — put it in the first sentence next to the
+     role title so the recruiter can route you instantly.
    - Do **not** mention H1B unless the user confirms the company sponsors.
 
 **e. Show the draft(s) and WAIT for approval.**

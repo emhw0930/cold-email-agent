@@ -58,6 +58,7 @@ emails, and show me before sending.
 
 ## Non-negotiables (every prompt)
 - **Always show the full draft(s) and wait for an explicit "send" — no exceptions.**
+- **Always include the job number / requisition ID in the email if the JD has one** (next to the role title in the first sentence).
 - Prefer Prospeo-VERIFIED emails; warn before sending to guessed/pattern addresses.
 - Find the email pattern ONLINE first and use it; only fall back to a Prospeo reveal if I say the pattern is wrong (save free-tier credits).
 - Never mention H1B unless the company is a confirmed sponsor.

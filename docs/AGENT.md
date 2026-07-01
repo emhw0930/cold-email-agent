@@ -1,4 +1,4 @@
-# CONTEXT.md — Instructions for Claude (Cowork)
+# AGENT.md — How to drive this tool with Claude / Cowork
 
 This file tells you (Claude, running in Cowork) how to operate this project when the user
 gives you a company + job description. Read this first, then follow the workflow.
@@ -38,6 +38,10 @@ tailored emails referencing the user's resume, get approval, send, and log.
      inconsistent, fall back to revealing verified emails for the few that matter.
 
 **c. Find the right people (US-based).**
+   - **Default: whenever a JD comes in, automatically find 10 US-based recruiters online**
+     (LinkedIn / web search) for that role — no need to be asked. Prioritize
+     technical/university/early-career recruiters. If fewer than 10 are publicly reachable,
+     surface as many good-fit names as you can find and say so.
    - Search Prospeo for **US-based recruiters** (technical/university recruiters fit SWE roles)
      and, when asked, **hiring managers** on the JD's specific team.
    - Filter to `person_location_search: {include: ["United States"]}`.
@@ -53,6 +57,9 @@ tailored emails referencing the user's resume, get approval, send, and log.
      LangGraph/AI agent work ↔ AI roles, GCP/FastAPI ↔ backend/cloud roles).
    - Lead with **UC Berkeley CS** + **Genuine Parts Company (Fortune 200)**.
    - Signature: name, phone, **both emails** (gmail + berkeley), LinkedIn. **No GitHub.**
+   - **Always include the job number / requisition ID in the email if the JD has one**
+     (e.g. "Job 210759344", "Role #200669637") — put it in the first sentence next to the
+     role title so the recruiter can route you instantly.
    - Do **not** mention H1B unless the user confirms the company sponsors.
 
 **e. Show the draft(s) and WAIT for approval.**

@@ -132,7 +132,7 @@ def log_outreach(
     Append a row to the Google Sheet logging this outreach.
 
     job      — from job_discovery.py
-    recruiter — from apollo_lookup.py
+    recruiter — from prospeo_lookup.py
     outreach  — from email_generator.py (subject, body)
     status    — default "Sent"
     """

@@ -1,197 +1,146 @@
-# H1B Job Application Agent — Setup Guide
+# Setup Guide
 
-Complete these steps once before running `main.py`.
+Do these steps once. All secrets go in a **`.env`** file (gitignored) — you never edit code.
 
 ---
 
-## 0. Prerequisites
+## 0. Install
 
 ```bash
 python3 -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
+source venv/bin/activate         # Windows: venv\Scripts\activate
 pip install -r requirements.txt
+cp .env.example .env             # then fill in the values below
 ```
+
+Open `.env` in any editor and fill it in as you complete each step.
 
 ---
 
-## 1. Anthropic API Key (Claude)
+## 1. Anthropic API key (Claude — writes the emails)
 
-1. Go to https://console.anthropic.com → API Keys → Create Key
+1. Go to https://console.anthropic.com → **API Keys** → **Create Key**
 2. Copy the key (starts with `sk-ant-...`)
-3. In `config.py`, set:
-   ```python
-   ANTHROPIC_API_KEY = "sk-ant-YOUR_KEY_HERE"
+3. In `.env`:
+   ```
+   ANTHROPIC_API_KEY=sk-ant-...
    ```
 
 ---
 
-## 2. Gmail API — OAuth Credentials
+## 2. Prospeo API key (finds recruiter emails)
 
-1. Go to https://console.cloud.google.com
-2. Create a new project (or use existing)
-3. Enable **Gmail API**: APIs & Services → Enable APIs → search "Gmail API" → Enable
-4. Create credentials: APIs & Services → Credentials → Create Credentials → **OAuth client ID**
+1. Go to https://prospeo.io → sign up → **API** → copy your key
+2. In `.env`:
+   ```
+   PROSPEO_API_KEY=...
+   ```
+
+> **Free tier ≈ 75 credits/month.** Search (finding names) is cheap; revealing a
+> *verified* email costs 1 credit. Strategy: reveal **one** email to learn a company's
+> format, then construct the rest from that pattern. See [AGENT.md](AGENT.md).
+
+---
+
+## 3. Gmail API (sends the email from your account)
+
+1. Go to https://console.cloud.google.com → create/select a project
+2. **APIs & Services → Enable APIs** → enable **Gmail API**
+3. **Credentials → Create Credentials → OAuth client ID**
    - Application type: **Desktop app**
-   - Name it anything
-5. Download the JSON → save as `assets/gmail_credentials.json`
-6. In `config.py`, set:
-   ```python
-   SENDER_EMAIL = "your.gmail@gmail.com"
+4. Download the JSON → save it as **`assets/gmail_credentials.json`**
+5. **OAuth consent screen** → add your own Gmail address as a **Test user**
+   (otherwise Google blocks the login)
+6. In `.env`:
    ```
-7. **First run only**: the script will open a browser window asking you to authorize.
-   After authorizing, a `assets/gmail_token.json` is created automatically — subsequent
-   runs use this token without prompting.
+   SENDER_EMAIL=your.email@gmail.com
+   ```
 
-> ⚠ Gmail free tier allows 500 sends/day. This agent sends at most 10/run, so you're fine.
+On the **first send**, a browser opens for one-time consent; a token is then cached at
+`assets/gmail_token.json` and reused.
+
+> The OAuth scope is **send-only** (`gmail.send`). Gmail's free tier allows 500 sends/day.
+> In "Testing" mode the token expires every 7 days — delete `assets/gmail_token.json` and
+> re-run to refresh, or publish the app to Production for a permanent token.
 
 ---
 
-## 3. Apollo.io API Key
+## 4. Google Sheets (logs every send)
 
-1. Go to https://app.apollo.io → Settings → API Keys → Create API Key
-2. Copy the key
-3. In `config.py`, set:
-   ```python
-   APOLLO_API_KEY = "YOUR_APOLLO_KEY"
+1. Same Google Cloud project → enable the **Google Sheets API**
+2. **IAM & Admin → Service Accounts → Create** (name it anything)
+3. Open the service account → **Keys → Add Key → JSON** → download
+4. Save it as **`assets/sheets_service_account.json`**
+5. Create a blank Google Sheet at https://sheets.google.com and copy its ID from the URL:
+   `https://docs.google.com/spreadsheets/d/`**`THIS_IS_THE_ID`**`/edit`
+6. **Share** the sheet with the service-account email
+   (`...@your-project.iam.gserviceaccount.com`) as **Editor**
+7. In `.env`:
+   ```
+   SHEETS_SPREADSHEET_ID=THIS_IS_THE_ID
    ```
 
-> **Free tier**: ~50 export credits/month. Each recruiter email reveal = 1 credit.  
-> For more volume, upgrade to Basic ($49/mo = 200 credits) or Professional.
+The header row and worksheet are created automatically on first log.
 
 ---
 
-## 4. Google Sheets — Service Account
+## 5. Resume + your profile
 
-1. In Google Cloud Console (same project as Gmail):
-   APIs & Services → Enable APIs → search "Google Sheets API" → Enable
-2. Create a service account: IAM & Admin → Service Accounts → Create
-   - Name: `h1b-agent`
-   - Role: skip (click Continue)
-3. Create a key: click the service account → Keys → Add Key → JSON → Download
-4. Save as `assets/sheets_service_account.json`
-5. **Create your Google Sheet**:
-   - Go to https://sheets.google.com → Blank spreadsheet
-   - Name it "H1B Job Applications"
-   - Copy the spreadsheet ID from the URL:
-     `https://docs.google.com/spreadsheets/d/THIS_IS_THE_ID/edit`
-6. **Share the sheet with the service account**:
-   - Open the sheet → Share → paste the service account email
-     (looks like `h1b-agent@your-project.iam.gserviceaccount.com`)
-   - Give it **Editor** access
-7. In `config.py`, set:
-   ```python
-   SHEETS_SPREADSHEET_ID = "YOUR_SPREADSHEET_ID"
+1. Drop your résumé at **`assets/resume.pdf`** (attached to every email).
+2. Fill in your profile fields in `.env`:
+   ```
+   YOUR_NAME=Jane Doe
+   YOUR_PHONE=+1 (555) 123-4567
+   YOUR_LINKEDIN=https://linkedin.com/in/janedoe
+   YOUR_EMAIL_PRIMARY=jane@gmail.com
+   YOUR_EMAIL_ALT=jane@school.edu        # optional second email in the signature
+   YOUR_BIO=a new-grad software engineer with ...
    ```
 
 ---
 
-## 5. Add Your Resume & Cover Letter
-
-Place your files in the `assets/` folder:
-
-```
-assets/
-├── resume.pdf             ← rename yours to this
-├── cover_letter.pdf       ← rename yours to this
-├── gmail_credentials.json
-└── sheets_service_account.json
-```
-
-> The cover letter can be a general one — Claude personalizes the cold email body.
-> The cover letter PDF is just an additional attachment.
-
----
-
-## 6. Fill in Your Profile in config.py
-
-```python
-YOUR_NAME     = "Jane Doe"
-YOUR_PHONE    = "+1 (555) 123-4567"
-YOUR_LINKEDIN = "https://linkedin.com/in/janedoe"
-YOUR_GITHUB   = "https://github.com/janedoe"
-YOUR_BIO      = (
-    "a new grad CS student from NYU with internship experience in "
-    "Python and React, seeking entry-level SWE roles"
-)
-```
-
----
-
-## 7. Test Everything (Dry Run First!)
+## 6. Verify (no emails sent)
 
 ```bash
-# Preview emails without sending anything
-python main.py --dry-run
+source venv/bin/activate
 
-# Check job discovery only
-python job_discovery.py
-
-# Check Apollo lookup
-python apollo_lookup.py
-
-# Check Sheets connection
-python sheets_logger.py
+python src/sheets_logger.py      # should print: Connected to worksheet
+python src/prospeo_lookup.py     # should print recruiter search results
+python src/email_generator.py    # prints a sample generated email
+python src/outreach.py --company stripe.com --title "Software Engineer" --max 3
+                                 # preview mode (default) — finds recruiters, drafts, no send
 ```
 
-Once dry run looks good:
-
-```bash
-# Live run — searches past 24h, sends up to 10 emails
-python main.py
-
-# Cast a wider net (past 48h, up to 20 jobs)
-python main.py --hours 48 --max 20
-```
+Add `--send` to `outreach.py` only when a preview looks right.
 
 ---
 
-## 8. Automate Daily (Optional)
+## 7. Automate daily (optional)
 
-### macOS — cron
 ```bash
 crontab -e
-# Add this line to run every day at 8am:
-0 8 * * * cd /path/to/h1b-job-agent && /path/to/venv/bin/python main.py >> logs/run.log 2>&1
+# run every day at 8am:
+0 8 * * * cd /path/to/cold-email-agent && /path/to/venv/bin/python src/main.py >> logs/run.log 2>&1
 ```
 
-### GitHub Actions (runs in the cloud, free)
-Create `.github/workflows/daily.yml`:
-```yaml
-name: Daily H1B Outreach
-on:
-  schedule:
-    - cron: '0 13 * * *'   # 8am EST = 1pm UTC
-jobs:
-  run:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: '3.11' }
-      - run: pip install -r requirements.txt
-      - run: python main.py
-        env:
-          # Store all secrets in GitHub repo Settings → Secrets
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          APOLLO_API_KEY: ${{ secrets.APOLLO_API_KEY }}
-          # (store credentials JSON as base64 secrets and decode in workflow)
-```
+For GitHub Actions, store every `.env` value (and the two `assets/*.json` files, base64-encoded)
+as repository **Secrets** and write them out at the start of the workflow.
 
 ---
 
-## Google Sheets — Column Reference
+## Google Sheet columns
 
-| Column | Field | Notes |
-|--------|-------|-------|
-| A | Date Sent | Auto-filled |
-| B | Company | Auto-filled |
-| C | Job Title | Auto-filled |
-| D | Job URL | Auto-filled |
-| E | Date Posted | Auto-filled |
-| F | H1B Signal | "explicit mention" or "known sponsor" |
-| G | Recruiter Name | Auto-filled |
-| H | Recruiter Title | Auto-filled |
-| I | Recruiter Email | Auto-filled |
-| J | Email Subject | Auto-filled |
-| K | Status | Update manually: Replied / No Response / Interview |
-| L | Notes | Free text |
+| Col | Field | Filled |
+|-----|-------|--------|
+| A | Date Sent | auto |
+| B | Company | auto |
+| C | Job Title | auto |
+| D | Job URL | auto |
+| E | Date Posted | auto |
+| F | H1B Signal | auto (`explicit mention` / `known sponsor`) |
+| G | Recruiter Name | auto |
+| H | Recruiter Title | auto |
+| I | Recruiter Email | auto |
+| J | Email Subject | auto |
+| K | Status | **you** — Replied / No Response / Interview / Bounced |
+| L | Notes | **you** — free text |

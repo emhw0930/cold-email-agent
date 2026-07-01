@@ -6,10 +6,10 @@
 
 from __future__ import annotations
 
+import json
 import re
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Optional
 
 import pandas as pd
 from jobspy import scrape_jobs
@@ -31,39 +31,23 @@ H1B_KEYWORDS = [
     r"open to sponsoring",
 ]
 
-# Top H1B-sponsoring companies (USCIS-confirmed, FY2023 data).
-# Used as a secondary signal when description doesn't mention H1B.
-KNOWN_H1B_SPONSORS: set[str] = {
-    "amazon", "google", "microsoft", "meta", "apple", "salesforce",
-    "oracle", "ibm", "intel", "qualcomm", "cisco", "nvidia",
-    "deloitte", "cognizant", "infosys", "tata consultancy", "tcs",
-    "wipro", "accenture", "capgemini", "hcl", "tech mahindra",
-    "ernst & young", "ey", "pwc", "kpmg",
-    "jpmorgan", "jp morgan", "goldman sachs", "morgan stanley",
-    "bloomberg", "two sigma", "jane street", "citadel",
-    "stripe", "airbnb", "lyft", "uber", "doordash", "instacart",
-    "databricks", "snowflake", "palantir", "splunk", "workday",
-    "servicenow", "crowdstrike", "palo alto networks",
-    "linkedin", "twitter", "x corp", "pinterest", "snap",
-    "adobe", "vmware", "broadcom", "amd", "arm",
-    "netflix", "spotify", "twitch", "roblox", "epic games",
-    "dropbox", "box", "atlassian", "github", "gitlab",
-    "zoom", "slack", "okta", "datadog", "new relic",
-    "mongodb", "elastic", "hashicorp", "confluent",
-    "samsung", "lg", "sony", "hitachi", "fujitsu", "ntt",
-    "rakuten", "mercari", "line", "bytedance", "tiktok",
-    "dell", "hp", "lenovo", "asus",
-    "bosch", "siemens", "ericsson", "nokia", "sap",
-    "lockheed martin", "boeing", "raytheon", "northrop grumman",
-    "general dynamics", "l3harris",
-    "ge", "general electric", "honeywell", "3m",
-    "johnson & johnson", "pfizer", "genentech", "roche",
-    "united health", "humana", "cigna",
-    "charles schwab", "fidelity", "vanguard", "blackrock",
-    "visa", "mastercard", "paypal", "square", "block",
-    "walmart", "target", "cvs", "walgreens",
-    "at&t", "verizon", "t-mobile",
-}
+# Top H1B-sponsoring companies, loaded from data/h1b_sponsors.json
+# (employer -> approx. annual H-1B approvals). Used as a secondary signal
+# when the job description doesn't explicitly mention sponsorship.
+# This file is the single source of truth — refresh it from the USCIS
+# H-1B Employer Data Hub rather than editing a list here.
+def _load_known_sponsors() -> set[str]:
+    path = config.PROJECT_ROOT / "data" / "h1b_sponsors.json"
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"  ⚠ Could not load {path}: {exc} — sponsor matching disabled")
+        return set()
+    # Keys are employer names; skip the "_meta" documentation entry.
+    return {name.lower() for name in data if not name.startswith("_")}
+
+
+KNOWN_H1B_SPONSORS: set[str] = _load_known_sponsors()
 
 
 def _matches_h1b_keyword(text: str) -> bool:
@@ -180,7 +164,7 @@ def fetch_fresh_jobs(hours_old: int = 24, max_results: int = 50) -> list[dict]:
             if date_posted and date_posted < cutoff:
                 continue
 
-            # Extract company domain from job_url for Apollo lookup
+            # Extract company domain from job_url for the Prospeo lookup
             job_url = str(row.get("job_url", ""))
             company_url = str(row.get("company_url", ""))
             domain = _extract_domain(company_url or job_url)

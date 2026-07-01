@@ -8,7 +8,7 @@
 #                        (returns names + person_id, email hidden)
 #    2. enrich-person  → reveal the verified email for the best match
 #
-#  Exposes the same interface as the old apollo_lookup.py:
+#  Public interface:
 #    find_recruiter(company_name, company_domain) -> dict | None
 #    batch_find_recruiters(jobs) -> list[dict]
 # ============================================================

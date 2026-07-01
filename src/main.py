@@ -67,12 +67,12 @@ def run(dry_run: bool = False, hours: int = 24, max_jobs: int = 10) -> None:
 
     print(f"\n  → {len(new_jobs)} new jobs to process")
 
-    # ── Step 3: Find recruiter emails via Apollo ──────────────
-    print("\n▶ Step 3: Finding recruiter emails via Apollo.io...")
+    # ── Step 3: Find recruiter emails via Prospeo ─────────────
+    print("\n▶ Step 3: Finding recruiter emails via Prospeo...")
     enriched_jobs = batch_find_recruiters(new_jobs)
 
     if not enriched_jobs:
-        print("\n⚠ No recruiter emails found. Check your Apollo API key.")
+        print("\n⚠ No recruiter emails found. Check your Prospeo API key/credits.")
         return
 
     print(f"\n  → {len(enriched_jobs)} jobs with recruiter emails")

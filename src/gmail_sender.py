@@ -8,7 +8,12 @@ from __future__ import annotations
 
 import base64
 import os
+import random
+import re
+import socket
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -26,38 +31,73 @@ import config
 # Only send permission — minimal OAuth scope
 SCOPES = ["https://www.googleapis.com/auth/gmail.send"]
 
+# Gmail's httplib2 transport isn't thread-safe, so each thread gets its own
+# service. Credential loading/refresh is serialized with a lock.
+_thread_local = threading.local()
+_token_lock = threading.Lock()
+
+
+def _load_credentials() -> Credentials:
+    """Load or refresh OAuth credentials (serialized across threads)."""
+    with _token_lock:
+        creds: Optional[Credentials] = None
+        token_path = config.GMAIL_TOKEN_PATH
+        creds_path = config.GMAIL_CREDENTIALS_PATH
+
+        if os.path.exists(token_path):
+            creds = Credentials.from_authorized_user_file(token_path, SCOPES)
+
+        if not creds or not creds.valid:
+            if creds and creds.expired and creds.refresh_token:
+                creds.refresh(Request())
+            else:
+                if not os.path.exists(creds_path):
+                    raise FileNotFoundError(
+                        f"Gmail credentials not found at '{creds_path}'.\n"
+                        "See docs/SETUP.md → Step 3 for instructions."
+                    )
+                flow = InstalledAppFlow.from_client_secrets_file(creds_path, SCOPES)
+                creds = flow.run_local_server(port=0)  # one-time browser consent
+
+            Path(token_path).parent.mkdir(parents=True, exist_ok=True)
+            with open(token_path, "w") as f:
+                f.write(creds.to_json())
+        return creds
+
 
 def _get_gmail_service():
-    """Return an authenticated Gmail API service."""
-    creds: Optional[Credentials] = None
+    """Return an authenticated Gmail API service, cached per thread."""
+    svc = getattr(_thread_local, "service", None)
+    if svc is not None:
+        return svc
+    creds = _load_credentials()
+    svc = build("gmail", "v1", credentials=creds, cache_discovery=False)
+    _thread_local.service = svc
+    return svc
 
-    token_path = config.GMAIL_TOKEN_PATH
-    creds_path = config.GMAIL_CREDENTIALS_PATH
 
-    # Load existing token
-    if os.path.exists(token_path):
-        creds = Credentials.from_authorized_user_file(token_path, SCOPES)
+# ── Pre-send guard ───────────────────────────────────────────
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+_domain_cache: dict[str, bool] = {}
 
-    # Refresh or run OAuth flow
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            if not os.path.exists(creds_path):
-                raise FileNotFoundError(
-                    f"Gmail credentials not found at '{creds_path}'.\n"
-                    "See SETUP.md → Step 2 for instructions."
-                )
-            flow = InstalledAppFlow.from_client_secrets_file(creds_path, SCOPES)
-            # Opens browser for one-time OAuth consent
-            creds = flow.run_local_server(port=0)
 
-        # Save token for next run
-        Path(token_path).parent.mkdir(parents=True, exist_ok=True)
-        with open(token_path, "w") as f:
-            f.write(creds.to_json())
+def validate_recipient(email: str) -> tuple[bool, str]:
+    """Cheap sanity check before spending a send.
 
-    return build("gmail", "v1", credentials=creds)
+    Catches malformed addresses and domains that don't resolve (typos like
+    @microsft.com). It CANNOT catch a wrong-but-plausible local part
+    (jsmith@ vs john.smith@) — only a Prospeo-verified email guarantees that.
+    """
+    if not email or not _EMAIL_RE.match(email):
+        return False, "invalid email syntax"
+    domain = email.split("@")[1].lower()
+    if domain not in _domain_cache:
+        try:
+            socket.getaddrinfo(domain, None)
+            _domain_cache[domain] = True
+        except OSError:
+            _domain_cache[domain] = False
+    return (_domain_cache[domain], "ok" if _domain_cache[domain] else "domain does not resolve")
 
 
 def _build_message(
@@ -112,11 +152,13 @@ def send_email(
     subject: str,
     body: str,
     dry_run: bool = False,
+    guard: bool = True,
 ) -> bool:
     """
     Send an email via Gmail API.
     Returns True on success, False on failure.
     If dry_run=True, prints the email instead of sending.
+    If guard=True, skips addresses that fail a cheap syntax/domain check.
     """
     if dry_run:
         print(f"\n{'─'*60}")
@@ -126,6 +168,12 @@ def send_email(
         print(f"Attachments: {config.RESUME_PATH}, {config.COVER_LETTER_PATH}")
         print(f"{'─'*60}")
         return True
+
+    if guard:
+        ok, reason = validate_recipient(to_email)
+        if not ok:
+            print(f"  ⛔ Skipped {to_email}: {reason}")
+            return False
 
     try:
         service = _get_gmail_service()
@@ -148,28 +196,53 @@ def send_email(
         return False
 
 
-def send_batch(outreach_list: list[dict], dry_run: bool = False) -> list[dict]:
+def send_batch(
+    outreach_list: list[dict],
+    dry_run: bool = False,
+    parallel: bool = False,
+    workers: int = 4,
+    jitter: float = 0.5,
+) -> list[dict]:
     """
-    Send a list of outreach emails with rate-limiting.
-    Each item must have: to_email, to_name, subject, body.
-    Returns the list annotated with 'sent': True/False.
+    Send a list of outreach emails. Each item needs: to_email, to_name, subject, body.
+    Returns the list annotated with 'sent': True/False (in the original order).
+
+    parallel=False (default): sequential, one send every EMAIL_SEND_DELAY_SECONDS.
+    parallel=True: bounded thread pool of `workers` (I/O-bound → threads help).
+        Keep `workers` small (3–4) and `jitter` > 0 so the burst stays under
+        Gmail's ~2–3 sends/sec/user limit and doesn't look like a blast. Faster
+        sending does NOT reduce spam risk — bounces and volume do (see docs/AGENT.md).
     """
-    results = []
-    for i, item in enumerate(outreach_list, 1):
-        print(f"\n[{i}/{len(outreach_list)}] → {item['to_name']} <{item['to_email']}>")
-        success = send_email(
-            to_email=item["to_email"],
-            to_name=item["to_name"],
-            subject=item["subject"],
-            body=item["body"],
-            dry_run=dry_run,
-        )
-        results.append({**item, "sent": success})
+    def _send(item: dict) -> bool:
+        return send_email(item["to_email"], item["to_name"],
+                          item["subject"], item["body"], dry_run=dry_run)
 
-        if i < len(outreach_list):
-            time.sleep(config.EMAIL_SEND_DELAY_SECONDS)
+    if not parallel:
+        results = []
+        for i, item in enumerate(outreach_list, 1):
+            print(f"\n[{i}/{len(outreach_list)}] → {item['to_name']} <{item['to_email']}>")
+            results.append({**item, "sent": _send(item)})
+            if i < len(outreach_list):
+                time.sleep(config.EMAIL_SEND_DELAY_SECONDS)
+        return results
 
-    return results
+    # Bounded-parallel path
+    results: list[Optional[dict]] = [None] * len(outreach_list)
+
+    def _worker(idx: int, item: dict) -> tuple[int, dict]:
+        if jitter:
+            time.sleep(random.uniform(0, jitter))  # de-synchronize the burst
+        ok = _send(item)
+        print(f"  {'✅' if ok else '❌'} {item['to_name']} <{item['to_email']}>")
+        return idx, {**item, "sent": ok}
+
+    with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+        futures = [pool.submit(_worker, i, it) for i, it in enumerate(outreach_list)]
+        for fut in as_completed(futures):
+            idx, res = fut.result()
+            results[idx] = res
+
+    return [r for r in results if r is not None]
 
 
 # ── Quick test (dry run only) ─────────────────────────────────

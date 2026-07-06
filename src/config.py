@@ -53,6 +53,11 @@ SHEETS_SERVICE_ACCOUNT_PATH = _abspath(_optional("SHEETS_SERVICE_ACCOUNT_PATH", 
 SHEETS_SPREADSHEET_ID = _require("SHEETS_SPREADSHEET_ID")
 SHEETS_WORKSHEET_NAME = _optional("SHEETS_WORKSHEET_NAME", "Applications")
 
+# Optional Apps Script web-app URL that logs a card click to the "Job" sheet
+# then redirects to the real posting. If empty, card links go straight to the job.
+# See docs/CLICK_TRACKER.md for the 5-minute setup.
+CLICK_TRACKER_URL = _optional("CLICK_TRACKER_URL", "")
+
 # ── Resume & Cover Letter ────────────────────────────────────
 RESUME_PATH = _abspath(_optional("RESUME_PATH", "assets/resume.pdf"))
 COVER_LETTER_PATH = _abspath(_optional("COVER_LETTER_PATH", "assets/cover_letter.pdf"))

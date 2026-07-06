@@ -1,16 +1,25 @@
-# Cold Email Agent
+# H1B Job Agent
 
-Find the right recruiters at a company you've applied to, write a tailored cold email to
-each (with your résumé attached), preview before sending, and log every send to a Google
-Sheet.
+Two tools for a new-grad job hunt that needs H-1B sponsorship, sharing the same plumbing
+(Prospeo for contacts, Claude for writing, Gmail for sending, Google Sheets for logging):
 
-Built **human-in-the-loop**: it drafts and shows you each email so nothing goes out without
-your OK. Personalized outreach beats spray-and-pray.
+1. **Daily job digest** — every morning, pull fresh entry-level SWE roles from companies
+   that are *both* confirmed H-1B sponsors *and* hiring right now, rank them against your
+   résumé, and email you a clean HTML digest.
+2. **Cold-email outreach** — for a company you applied to, find the right recruiters and
+   hiring managers, draft a tailored email to each (résumé attached), **preview before
+   sending**, and log every send to a Google Sheet.
+
+Both are **human-in-the-loop**: nothing goes out without your explicit OK. Personalized,
+targeted outreach beats spray-and-pray.
 
 ```
-Find recruiters → get their emails → draft a tailored email → preview → send → log
-   (Prospeo)        (Prospeo /        (Claude)              (you)    (Gmail)  (Sheets)
-                     known pattern)
+Daily digest:  H-1B sponsor DB → their ATS boards → fresh junior SWE roles → rank vs. résumé → email you
+                (USCIS data)      (Greenhouse/Lever/Ashby)                     (Claude)
+
+Outreach:      find people → get their emails → draft tailored email → preview → send → log
+                (web/LinkedIn)  (Prospeo /                (Claude)         (you)   (Gmail) (Sheets)
+                                 known pattern)
 ```
 
 ---
@@ -28,10 +37,13 @@ cp .env.example .env          # fill in your keys + profile
 #   assets/sheets_service_account.json (Sheets)
 #   assets/resume.pdf                  (your résumé)
 
-# 3. Preview outreach for a role (no emails sent)
+# 3a. Daily digest — preview a run without emailing
+python src/daily_job_email.py --to you@example.com --dry-run
+
+# 3b. Outreach — preview drafts for a role (no emails sent)
 python src/outreach.py --company stripe.com --title "Software Engineer" --max 5
 
-# 4. Send for real
+# 4. Send for real (add --send to outreach)
 python src/outreach.py --company stripe.com --title "Software Engineer" --max 5 --send
 ```
 
@@ -41,10 +53,52 @@ First send opens a browser once for Gmail consent; the token is cached afterward
 
 ---
 
-## The three ways to run it
+## Part 1 — Daily job digest
+
+Finds roles at companies that are *both* H-1B sponsors *and* actively hiring juniors, then
+emails you a ranked digest. Intended to run daily from launchd/cron.
+
+```bash
+python src/daily_job_email.py --to you@example.com              # all roles, emailed
+python src/daily_job_email.py --to you@example.com --top 20     # cap at 20
+python src/daily_job_email.py --to you@example.com --new-only   # only roles not seen before
+python src/daily_job_email.py --to you@example.com --rank       # Claude-rank by résumé fit
+python src/daily_job_email.py --to you@example.com --dry-run    # print instead of emailing
+```
+
+How it's built:
+
+- **`h1b_db.py`** loads the USCIS H-1B Employer Data Hub CSV into SQLite
+  (`data/h1b_employers.db`) and ranks sponsors by *New Employment Approvals* — fresh
+  (often cap-subject) hires, not renewals.
+  ```bash
+  python src/h1b_db.py --csv "Employer Information.csv" --top 25   # (re)build the DB
+  ```
+- **`ats.py` + `h1b_greenhouse.py`** map each sponsor to its public **Greenhouse / Lever /
+  Ashby** board (slug-guess + probe, since no ATS offers global search), cache the working
+  boards, and pull fresh explicit-junior SWE roles.
+  ```bash
+  python src/h1b_greenhouse.py --resolve --n 500   # discover + cache boards
+  python src/h1b_greenhouse.py --list              # show cached boards
+  python src/h1b_greenhouse.py --jobs              # fresh junior roles across all boards
+  ```
+  Cached board list lives in `data/h1b_sponsors.json`.
+- **`fit_ranker.py`** drops roles whose JD explicitly says "no sponsorship," then (with
+  `--rank`) has Claude score each 0–100 against your résumé with a one-line reason.
+- **`outreach_server.py`** is a local web server (http://127.0.0.1:8770) behind the
+  "Email recruiters" button in the digest — it opens a review page with an AI-drafted
+  email and a recruiter-email builder, and only sends when you click Send.
+  ```bash
+  python src/outreach_server.py
+  ```
+
+---
+
+## Part 2 — Cold-email outreach
+
+You applied to a role; reach a few recruiters and hiring managers there.
 
 ### 1. Targeted outreach — `src/outreach.py` (recommended)
-You applied to a role; reach a few recruiters there.
 ```bash
 python src/outreach.py --company <domain> --title "<job title>" [--jd jd.txt] [--max N] [--send]
 ```
@@ -74,19 +128,28 @@ python src/main.py --max 5               # send
 ## Project structure
 
 ```
-cold-email-agent/
+h1b-job-agent/
 ├── README.md              ← you are here
 ├── .env.example           ← copy to .env; all secrets live in .env (gitignored)
 ├── requirements.txt
 ├── assets/                ← gitignored: OAuth JSON, service account, resume.pdf
 ├── data/
-│   └── h1b_sponsors.json  ← employer → approx. annual H-1B approvals (sponsor signal)
+│   ├── h1b_employers.db   ← SQLite of USCIS sponsors (gitignored; rebuild from CSV)
+│   └── h1b_sponsors.json  ← cached sponsor → confirmed ATS board mapping
 ├── docs/
 │   ├── SETUP.md           ← one-time setup (API keys, OAuth, Sheets)
 │   ├── AGENT.md           ← how to drive this with Claude / Cowork
 │   └── PROMPTS.md         ← ready-to-paste prompts for an AI assistant
 └── src/
     ├── config.py          ← loads config/secrets from .env
+    │   # ── Daily digest ──
+    ├── h1b_db.py          ← USCIS H-1B CSV → SQLite, ranked by new approvals
+    ├── ats.py             ← unified reader for Greenhouse/Lever/Ashby APIs
+    ├── h1b_greenhouse.py  ← sponsor → ATS board resolver + fresh-role puller
+    ├── fit_ranker.py      ← sponsorship gate + Claude résumé-fit ranking
+    ├── daily_job_email.py ← builds + emails the daily HTML digest
+    ├── outreach_server.py ← local review server behind the digest's outreach button
+    │   # ── Cold outreach ──
     ├── outreach.py        ← targeted, human-in-the-loop CLI  (start here)
     ├── graph_workflow.py  ← LangGraph version of the pipeline
     ├── main.py            ← batch job-discovery pipeline
@@ -105,7 +168,7 @@ Everything lives in `.env` (loaded by `src/config.py`); see `.env.example` for t
 
 | Variable | What it is |
 |----------|-----------|
-| `ANTHROPIC_API_KEY` | Claude API key (writes emails) |
+| `ANTHROPIC_API_KEY` | Claude API key (writes emails, ranks fit) |
 | `PROSPEO_API_KEY` | Prospeo key (recruiter email lookup) |
 | `SENDER_EMAIL` | Gmail address you send from |
 | `SHEETS_SPREADSHEET_ID` | Target Google Sheet ID |
@@ -117,9 +180,22 @@ Everything lives in `.env` (loaded by `src/config.py`); see `.env.example` for t
 
 ---
 
+## Automate the daily digest
+
+Run `daily_job_email.py` each morning via launchd (macOS) or cron:
+
+```bash
+crontab -e
+# every day at 8am:
+0 8 * * * cd /path/to/h1b-job-agent && /path/to/venv/bin/python src/daily_job_email.py --to you@example.com --new-only --rank >> logs/daily.log 2>&1
+```
+
+---
+
 ## Security
 
-- **Secrets are never committed** — `.env` and `assets/*.json` / `assets/resume.pdf` are gitignored.
+- **Secrets are never committed** — `.env`, `assets/*.json`, `assets/resume.pdf`, and
+  `data/*.db` are gitignored.
 - Gmail scope is limited to **send-only**.
 - If a key is ever exposed, rotate it immediately (Anthropic / Prospeo / Google consoles).
 
@@ -130,4 +206,7 @@ Everything lives in `.env` (loaded by `src/config.py`); see `.env.example` for t
 - **Prospeo free tier** ≈ 75 credits/month. Prefer *verified* emails; guessed/pattern
   addresses can bounce. See [docs/AGENT.md](docs/AGENT.md) for the one-reveal-then-pattern strategy.
 - **Gmail free tier** allows 500 sends/day.
+- ATS board mapping is slug-guess + probe; Greenhouse is name-verified, Lever/Ashby are
+  verified by slug strength since they expose no company name.
 - This sends real email to real people — keep it targeted and personalized.
+```

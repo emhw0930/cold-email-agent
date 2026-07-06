@@ -42,6 +42,19 @@ tailored emails referencing the user's resume, get approval, send, and log.
      (LinkedIn / web search) for that role — no need to be asked. Prioritize
      technical/university/early-career recruiters. If fewer than 10 are publicly reachable,
      surface as many good-fit names as you can find and say so.
+   - **Always find 10 real recruiter NAMES online first (web/LinkedIn), then construct each
+     email using the company's HIGHEST-PROBABILITY pattern** (look the dominant format up
+     online — e.g. RocketReach/LeadIQ report the % — and use that single best pattern for
+     everyone). Do NOT invent names to hit 10, and do NOT spray multiple pattern variants at
+     the same person (that just multiplies bounces). If a specific address bounces, retry
+     ONLY that person with the next-most-common pattern.
+   - **Also default: for every JD, find 2 hiring managers highly correlated to this specific
+     role/team** (engineering manager, team lead, or director over the JD's exact team — verify
+     the team on LinkedIn/web before recommending). The user wants to reach hiring managers
+     directly, not only route through recruiters. If a manager's email can't be verified,
+     construct it from the confirmed company pattern and flag the bounce risk.
+   - **Always ask the user before sending any cold email** — show the drafts (recruiters +
+     the 2 hiring managers) and wait for an explicit "send".
    - Search Prospeo for **US-based recruiters** (technical/university recruiters fit SWE roles)
      and, when asked, **hiring managers** on the JD's specific team.
    - Filter to `person_location_search: {include: ["United States"]}`.

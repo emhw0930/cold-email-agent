@@ -21,6 +21,9 @@ __pycache__/
 logs/
 *.log
 
+# ── Generated data (rebuilt from the USCIS CSV; too big to commit) ─
+data/*.db
+
 # ── OS / editor ───────────────────────────────────────────────
 .DS_Store
 .idea/

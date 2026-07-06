@@ -17,8 +17,9 @@ Role:    <EXACT JOB TITLE> on the <TEAM> team
 JD:
 <PASTE FULL JOB DESCRIPTION HERE>
 
-Automatically find 10 US-based recruiters/early-career/campus recruiters (and a
-hiring manager on this team if obvious) — don't wait to be asked for the count.
+Automatically find 10 US-based recruiters/early-career/campus recruiters AND 2
+hiring managers highly correlated to this specific role/team (verify the team on
+LinkedIn first) — don't wait to be asked. Always ask me before sending.
 FIRST find the company's email pattern ONLINE
 (web search / known formats) and use that to construct the addresses. Only if I
 tell you the pattern is wrong (bounces), spend ONE Prospeo reveal to determine
@@ -59,6 +60,7 @@ emails, and show me before sending.
 
 ## Non-negotiables (every prompt)
 - **Always show the full draft(s) and wait for an explicit "send" — no exceptions.**
+- **Always find 10 real recruiter names online first, then build each email with the company's highest-probability pattern** (look up the dominant format online). Never invent names to reach 10; if one bounces, retry only that person with the next-best pattern.
 - **Always include the job number / requisition ID in the email if the JD has one** (next to the role title in the first sentence).
 - Prefer Prospeo-VERIFIED emails; warn before sending to guessed/pattern addresses.
 - Find the email pattern ONLINE first and use it; only fall back to a Prospeo reveal if I say the pattern is wrong (save free-tier credits).

@@ -29,16 +29,9 @@ OUTREACH_PORT = 8770  # local outreach_server.py (the "Email recruiters" button)
 
 # Big-name employers surfaced as "browse yourself" links instead of individual
 # cards: their boards are huge (Amazon) or block scraping (Google/Apple/Tesla/
-# Bloomberg) / would bloat the email. Each link opens their SWE careers search.
-BROWSE_LINKS = [
-    ("Amazon",    "https://www.amazon.jobs/en/search?base_query=software+engineer&loc_query=United+States"),
-    ("Google",    "https://www.google.com/about/careers/applications/jobs/results/?q=software%20engineer&hl=en&target_level=EARLY&location=United%20States"),
-    ("Microsoft", "https://jobs.careers.microsoft.com/global/en/search?q=software%20engineer&lc=United%20States"),
-    ("Apple",     "https://jobs.apple.com/en-us/search?search=software%20engineer&location=united-states-USA"),
-    ("Tesla",     "https://www.tesla.com/careers/search/?query=software%20engineer&region=5"),
-    ("Bloomberg", "https://bloomberg.avature.net/careers/SearchJobs/Software%20engineer?1686=%5B55478%5D&1686_format=2312&listFilterMode=1&jobRecordsPerPage=12&"),
-    ("LinkedIn",  "https://www.linkedin.com/jobs/search/?f_C=1337&f_E=2%2C3&keywords=software%20engineer&location=United%20States&origin=JOB_SEARCH_PAGE_JOB_FILTER"),
-]
+# Bloomberg) / would bloat the email. Single source of truth: jobs_site.py
+# (which also renders them at the top of the public site).
+from jobs_site import BROWSE_LINKS
 
 
 def _browse_section() -> str:
@@ -47,7 +40,7 @@ def _browse_section() -> str:
         f'<a href="{url}" style="display:inline-block;margin:0 8px 8px 0;'
         f'padding:9px 15px;background:#f1f3f4;color:#1a56c4;font-size:12px;'
         f'font-weight:600;text-decoration:none;border-radius:18px">{name} &rarr;</a>'
-        for name, url in BROWSE_LINKS)
+        for name, url, _color in BROWSE_LINKS)
     return (
         '<tr><td style="padding:22px 6px 6px 6px">'
         '<div style="font-size:15px;font-weight:700;color:#202124">Browse these employers directly</div>'

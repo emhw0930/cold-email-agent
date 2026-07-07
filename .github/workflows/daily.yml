@@ -32,6 +32,7 @@ jobs:
           cat > .env <<EOF
           ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
           PROSPEO_API_KEY=${{ secrets.PROSPEO_API_KEY }}
+          GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
           SENDER_EMAIL=${{ secrets.SENDER_EMAIL }}
           GMAIL_APP_PASSWORD=${{ secrets.GMAIL_APP_PASSWORD }}
           SHEETS_SPREADSHEET_ID=${{ secrets.SHEETS_SPREADSHEET_ID }}

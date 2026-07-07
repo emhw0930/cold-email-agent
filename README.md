@@ -77,6 +77,8 @@ publishes them all to the public site, and emails you the top 10 by résumé fit
 Required repo secrets: `ANTHROPIC_API_KEY`, `PROSPEO_API_KEY`, `SENDER_EMAIL`,
 `GMAIL_APP_PASSWORD` (myaccount.google.com → Security → App passwords),
 `SHEETS_SPREADSHEET_ID`, `DIGEST_TO`, `RESUME_TEXT`, `YOUR_NAME`.
+Optional: `GEMINI_API_KEY` (aistudio.google.com) — when set, fit-ranking runs on
+Gemini's free tier (`gemini-2.5-flash-lite`) instead of the paid Claude API.
 Trigger a run manually from the Actions tab (`workflow_dispatch`) to test.
 
 ### Run it yourself

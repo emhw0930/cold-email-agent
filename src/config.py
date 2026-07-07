@@ -43,6 +43,12 @@ def _optional(name: str, default: str = "") -> str:
 ANTHROPIC_API_KEY = _require("ANTHROPIC_API_KEY")
 PROSPEO_API_KEY = _require("PROSPEO_API_KEY")
 
+# Optional: Google Gemini key (aistudio.google.com). When set, the daily
+# fit-ranking scores via Gemini's FREE tier instead of the (paid) Claude API.
+# Claude remains the ranker when this is unset.
+GEMINI_API_KEY = _optional("GEMINI_API_KEY")
+GEMINI_MODEL = _optional("GEMINI_MODEL", "gemini-2.5-flash-lite")
+
 # ── Gmail OAuth ──────────────────────────────────────────────
 GMAIL_CREDENTIALS_PATH = _abspath(_optional("GMAIL_CREDENTIALS_PATH", "assets/gmail_credentials.json"))
 GMAIL_TOKEN_PATH = _abspath(_optional("GMAIL_TOKEN_PATH", "assets/gmail_token.json"))

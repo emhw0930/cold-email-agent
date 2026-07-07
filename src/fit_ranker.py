@@ -20,10 +20,13 @@ from __future__ import annotations
 import concurrent.futures as cf
 import json
 import re
+import threading
+import time
 from functools import lru_cache
 from pathlib import Path
 
 import anthropic
+import requests
 
 import ats
 import config
@@ -84,9 +87,8 @@ def _get_client() -> anthropic.Anthropic:
 _SCORE_MODEL = "claude-haiku-4-5"  # cheap + fast; scoring is a simple judgement
 
 
-def _score_one(title: str, company: str, jd: str, resume: str) -> tuple[int, str]:
-    """Return (score 0-100, one-line reason)."""
-    prompt = (
+def _prompt(title: str, company: str, jd: str, resume: str) -> str:
+    return (
         "You are screening software-engineering jobs for a candidate. Score how good a "
         "FIT this role is for THIS candidate from 0 (poor) to 100 (excellent), considering "
         "seniority match, tech-stack overlap, and role type. Be discerning — most roles "
@@ -96,16 +98,73 @@ def _score_one(title: str, company: str, jd: str, resume: str) -> tuple[int, str
         f"JOB DESCRIPTION:\n{(jd or '(no description available)')[:4000]}\n\n"
         'Respond ONLY with compact JSON: {"score": <int>, "reason": "<max 12 words>"}'
     )
+
+
+def _parse_score(text: str) -> tuple[int, str]:
+    m = re.search(r"\{.*\}", text, re.S)
+    data = json.loads(m.group(0)) if m else {}
+    score = int(data.get("score", 0))
+    return max(0, min(100, score)), str(data.get("reason", ""))[:80]
+
+
+# ── Gemini free-tier throttle ────────────────────────────────
+# The free tier allows ~10-15 requests/minute. Serialize calls and space
+# them ~4.5s apart (~13/min) so a 150-role run stays under the limit.
+_GEMINI_URL = ("https://generativelanguage.googleapis.com/v1beta/models/"
+               f"{config.GEMINI_MODEL}:generateContent")
+_gemini_lock = threading.Lock()
+_gemini_next_ok = 0.0
+_GEMINI_SPACING = 4.5  # seconds between calls
+
+
+def _gemini_throttle() -> None:
+    global _gemini_next_ok
+    with _gemini_lock:
+        wait = _gemini_next_ok - time.monotonic()
+        if wait > 0:
+            time.sleep(wait)
+        _gemini_next_ok = time.monotonic() + _GEMINI_SPACING
+
+
+def _score_one_gemini(title: str, company: str, jd: str, resume: str) -> tuple[int, str]:
+    """Score via Google Gemini (free tier). Retries once on a 429."""
+    body = {
+        "contents": [{"parts": [{"text": _prompt(title, company, jd, resume)}]}],
+        "generationConfig": {"maxOutputTokens": 500, "temperature": 0.1},
+    }
+    for attempt in (1, 2):
+        _gemini_throttle()
+        r = requests.post(_GEMINI_URL, json=body, timeout=45,
+                          headers={"x-goog-api-key": config.GEMINI_API_KEY,
+                                   "Content-Type": "application/json"})
+        if r.status_code == 429 and attempt == 1:
+            time.sleep(25)  # free-tier RPM window; back off and retry once
+            continue
+        r.raise_for_status()
+        data = r.json()
+        text = data["candidates"][0]["content"]["parts"][0]["text"]
+        return _parse_score(text)
+    raise RuntimeError("gemini rate-limited")
+
+
+def _score_one_claude(title: str, company: str, jd: str, resume: str) -> tuple[int, str]:
+    resp = _get_client().messages.create(
+        model=_SCORE_MODEL, max_tokens=80,
+        messages=[{"role": "user", "content": _prompt(title, company, jd, resume)}],
+    )
+    return _parse_score(resp.content[0].text.strip())
+
+
+def _score_one(title: str, company: str, jd: str, resume: str) -> tuple[int, str]:
+    """Return (score 0-100, one-line reason).
+
+    Provider: Gemini free tier when GEMINI_API_KEY is set, else Claude.
+    A Gemini failure returns -1 rather than silently spending Claude credits.
+    """
     try:
-        resp = _get_client().messages.create(
-            model=_SCORE_MODEL, max_tokens=80,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        text = resp.content[0].text.strip()
-        m = re.search(r"\{.*\}", text, re.S)
-        data = json.loads(m.group(0)) if m else {}
-        score = int(data.get("score", 0))
-        return max(0, min(100, score)), str(data.get("reason", ""))[:80]
+        if config.GEMINI_API_KEY:
+            return _score_one_gemini(title, company, jd, resume)
+        return _score_one_claude(title, company, jd, resume)
     except Exception as e:
         return -1, f"score error: {e}"[:80]
 

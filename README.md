@@ -1,11 +1,14 @@
 # H1B Job Agent
 
+**Live job board → https://emhw0930.github.io/cold-email-agent/** (all current roles,
+refreshed daily by GitHub Actions)
+
 Two tools for a new-grad job hunt that needs H-1B sponsorship, sharing the same plumbing
 (Prospeo for contacts, Claude for writing, Gmail for sending, Google Sheets for logging):
 
 1. **Daily job digest** — every morning, pull fresh entry-level SWE roles from companies
-   that are *both* confirmed H-1B sponsors *and* hiring right now, rank them against your
-   résumé, and email you a clean HTML digest.
+   that are *both* confirmed H-1B sponsors *and* hiring right now, publish ALL of them to
+   the public site, rank the newest against your résumé, and email you the **top 10**.
 2. **Cold-email outreach** — for a company you applied to, find the right recruiters and
    hiring managers, draft a tailored email to each (résumé attached), **preview before
    sending**, and log every send to a Google Sheet.
@@ -55,15 +58,34 @@ First send opens a browser once for Gmail consent; the token is cached afterward
 
 ## Part 1 — Daily job digest
 
-Finds roles at companies that are *both* H-1B sponsors *and* actively hiring juniors, then
-emails you a ranked digest. Intended to run daily from launchd/cron.
+Finds roles at companies that are *both* H-1B sponsors *and* actively hiring juniors,
+publishes them all to the public site, and emails you the top 10 by résumé fit.
+
+### Fully automated (GitHub Actions — the way it runs in production)
+
+`.github/workflows/daily.yml` runs every day at 12:00 UTC (8 AM ET):
+
+1. Pull every current junior SWE role from the cached sponsor boards
+   (Greenhouse / Lever / Ashby / Workday)
+2. Regenerate the **public site** ([docs/index.html](docs/index.html) →
+   https://emhw0930.github.io/cold-email-agent/) with ALL of them
+3. Drop anything already emailed in a past digest (dedup state lives in
+   `data/h1b_employers.db`, committed back after each run)
+4. Claude-rank the freshest 150 against the résumé + drop "no sponsorship" JDs
+5. Email the **top 10** (via Gmail SMTP app password) and mark them sent
+
+Required repo secrets: `ANTHROPIC_API_KEY`, `PROSPEO_API_KEY`, `SENDER_EMAIL`,
+`GMAIL_APP_PASSWORD` (myaccount.google.com → Security → App passwords),
+`SHEETS_SPREADSHEET_ID`, `DIGEST_TO`, `RESUME_TEXT`, `YOUR_NAME`.
+Trigger a run manually from the Actions tab (`workflow_dispatch`) to test.
+
+### Run it yourself
 
 ```bash
-python src/daily_job_email.py --to you@example.com              # all roles, emailed
-python src/daily_job_email.py --to you@example.com --top 20     # cap at 20
-python src/daily_job_email.py --to you@example.com --new-only   # only roles not seen before
-python src/daily_job_email.py --to you@example.com --rank       # Claude-rank by résumé fit
-python src/daily_job_email.py --to you@example.com --dry-run    # print instead of emailing
+python src/daily_workflow.py --to you@example.com --dry-run   # site + top-10 preview, no send
+python src/daily_workflow.py --to you@example.com             # the full daily run
+python src/jobs_site.py --open                                # just rebuild + open the site
+python src/daily_job_email.py --to you@example.com --top 20   # classic digest (no site)
 ```
 
 How it's built:

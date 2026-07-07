@@ -17,7 +17,7 @@ Open `.env` in any editor and fill it in as you complete each step.
 
 ---
 
-## 1. Anthropic API key (Claude — writes the emails)
+## 1. Anthropic API key (Claude — writes outreach emails; ranking fallback)
 
 1. Go to https://console.anthropic.com → **API Keys** → **Create Key**
 2. Copy the key (starts with `sk-ant-...`)
@@ -42,7 +42,26 @@ Open `.env` in any editor and fill it in as you complete each step.
 
 ---
 
-## 3. Gmail API (sends the email from your account)
+## 3. Gmail sending — pick ONE of two paths
+
+Either path sends from your Gmail. In `.env`, always set:
+```
+SENDER_EMAIL=your.email@gmail.com
+```
+
+### Path A: App Password (simplest — and required for the GitHub Actions automation)
+
+1. Go to https://myaccount.google.com → **Security** → turn on **2-Step Verification**
+2. Search the settings page for **"App passwords"** → create one (name it anything)
+3. Put the 16-character password in `.env`:
+   ```
+   GMAIL_APP_PASSWORD=abcdefghijklmnop
+   ```
+
+Mail goes out via SMTP — no browser, no Google Cloud project, works headless (this is
+what the daily GitHub Action uses). Revoke it anytime from the same settings page.
+
+### Path B: Gmail API OAuth (local use only)
 
 1. Go to https://console.cloud.google.com → create/select a project
 2. **APIs & Services → Enable APIs** → enable **Gmail API**
@@ -51,10 +70,6 @@ Open `.env` in any editor and fill it in as you complete each step.
 4. Download the JSON → save it as **`assets/gmail_credentials.json`**
 5. **OAuth consent screen** → add your own Gmail address as a **Test user**
    (otherwise Google blocks the login)
-6. In `.env`:
-   ```
-   SENDER_EMAIL=your.email@gmail.com
-   ```
 
 On the **first send**, a browser opens for one-time consent; a token is then cached at
 `assets/gmail_token.json` and reused.
@@ -62,6 +77,7 @@ On the **first send**, a browser opens for one-time consent; a token is then cac
 > The OAuth scope is **send-only** (`gmail.send`). Gmail's free tier allows 500 sends/day.
 > In "Testing" mode the token expires every 7 days — delete `assets/gmail_token.json` and
 > re-run to refresh, or publish the app to Production for a permanent token.
+> If `GMAIL_APP_PASSWORD` is set, it takes precedence over OAuth.
 
 ---
 
@@ -81,6 +97,24 @@ On the **first send**, a browser opens for one-time consent; a token is then cac
    ```
 
 The header row and worksheet are created automatically on first log.
+
+---
+
+## 4b. Google Gemini key (optional — makes daily fit-ranking FREE)
+
+The daily digest scores roles against your résumé with an LLM. Without this key it uses
+the (paid) Claude API (~$0.35/run at 150 roles). With it, ranking runs on Gemini's free
+tier instead — $0.
+
+1. Go to https://aistudio.google.com → **Get API key** → **Create API key**
+2. In `.env`:
+   ```
+   GEMINI_API_KEY=...
+   ```
+
+Calls are throttled to the free tier's rate limits automatically (~150 roles ≈ 12 min).
+If Gemini errors mid-run, affected roles are left unscored — it never silently falls
+back to spending Claude credits. Remove the key to revert to Claude.
 
 ---
 
@@ -115,16 +149,30 @@ Add `--send` to `outreach.py` only when a preview looks right.
 
 ---
 
-## 7. Automate daily (optional)
+## 7. Daily automation (GitHub Actions — already wired)
 
-```bash
-crontab -e
-# run every day at 8am:
-0 8 * * * cd /path/to/cold-email-agent && /path/to/venv/bin/python src/main.py >> logs/run.log 2>&1
-```
+`.github/workflows/daily.yml` runs the full daily loop at 12:00 UTC (8 AM ET): refresh
+the public site with every current role, rank the freshest unsent roles by résumé fit,
+and email the top 10. To set it up on a fork, add these **repository Secrets**
+(Settings → Secrets and variables → Actions):
 
-For GitHub Actions, store every `.env` value (and the two `assets/*.json` files, base64-encoded)
-as repository **Secrets** and write them out at the start of the workflow.
+| Secret | Value |
+|---|---|
+| `ANTHROPIC_API_KEY` | from step 1 |
+| `PROSPEO_API_KEY` | from step 2 |
+| `GMAIL_APP_PASSWORD` | from step 3 Path A (required — the runner has no browser for OAuth) |
+| `GEMINI_API_KEY` | from step 4b (optional but recommended — free ranking) |
+| `SENDER_EMAIL` | your Gmail address |
+| `SHEETS_SPREADSHEET_ID` | from step 4 |
+| `DIGEST_TO` | the address that receives the daily top-10 email |
+| `RESUME_TEXT` | plain-text of your résumé (kept out of the public repo) |
+| `YOUR_NAME` | your name |
+
+Enable GitHub Pages (**Settings → Pages** → branch `main`, folder `/docs`) to publish the
+job board. Test with **Actions tab → Daily job digest + site refresh → Run workflow**.
+
+Prefer local cron instead? `0 8 * * * cd /path/to/h1b-job-agent && venv/bin/python
+src/daily_workflow.py --to you@example.com >> logs/daily.log 2>&1`
 
 ---
 

@@ -112,6 +112,113 @@ WORKDAY_ENDPOINTS = {
 }
 
 
+# Companies that run their OWN bespoke career site (not Greenhouse/Lever/Ashby/
+# Workday) with a clean public API we can read directly. Always included in the
+# board list — no sponsor-slug resolving needed (they're obvious H-1B sponsors).
+# Each entry is (provider, token); the provider is handled in ats.py.
+CUSTOM_BOARDS: list[tuple[str, str]] = [
+    ("amazon", "amazon"),
+]
+
+# Companies whose native boards can't be read directly — either they block plain
+# API access (Google/Apple/Microsoft/Tesla: Akamai 403 / CSRF / removed endpoints)
+# or have no usable public board at all (Bloomberg redirects to marketing;
+# LinkedIn isn't on Greenhouse/Lever/Ashby). We pull their roles through the
+# JobSpy aggregator (LinkedIn/Indeed) and merge them into the same digest.
+# Amazon is the exception (clean public board -> CUSTOM_BOARDS above).
+AGGREGATOR_COMPANIES = ["Google", "Microsoft", "Apple", "Tesla",
+                        "Bloomberg", "LinkedIn"]
+
+# LinkedIn numeric company IDs (from linkedin.com/company/<slug>). Passing these
+# to JobSpy pulls ONLY that company's own postings, instead of a noisy keyword
+# search that returns unrelated employers. Verified: Google/Microsoft/Tesla/
+# LinkedIn resolve correctly. Companies missing/​stale here fall back to keyword.
+LINKEDIN_COMPANY_IDS = {
+    "Google": 1441,
+    "Microsoft": 1035,
+    "Apple": 162479,
+    "Tesla": 15564,
+    "Bloomberg": 3068,
+    "LinkedIn": 1337,
+}
+
+
+def aggregator_swe(companies: list[str] | None = None, hours_old: int = 168,
+                   us_only: bool = True) -> list[dict]:
+    """Junior SWE roles for companies without a usable native board, via JobSpy.
+
+    For companies with a known LinkedIn company ID, targets their postings
+    precisely; otherwise (or if the ID returns nothing) falls back to a
+    name-filtered keyword search on LinkedIn + Indeed. Normalized to the same
+    job dict as the ATS providers so they flow through the digest (first-seen,
+    fit ranking, cards) unchanged. Best-effort: returns [] if JobSpy fails.
+    """
+    companies = companies or AGGREGATOR_COMPANIES
+    try:
+        from jobspy import scrape_jobs
+    except Exception:
+        return []
+
+    def _rows(df, company: str, trust: bool) -> list[dict]:
+        """Filter + normalize a JobSpy frame. trust=True skips the name match
+        (used when we already targeted the company by its LinkedIn ID)."""
+        out = []
+        if df is None or df.empty:
+            return out
+        for _, r in df.iterrows():
+            title = str(r.get("title", "") or "").strip()
+            comp = str(r.get("company", "") or "").strip()
+            if not trust and company.lower() not in comp.lower():
+                continue
+            if not ats.is_junior_swe(title):
+                continue
+            loc = str(r.get("location", "") or "").strip()
+            if us_only and not ats.is_us(loc):
+                continue
+            url = str(r.get("job_url", "") or "").strip()
+            dp = r.get("date_posted")
+            out.append({
+                "company": comp or company,
+                "ats": str(r.get("site", "") or "linkedin"),
+                "title": title, "location": loc, "url": url,
+                "updated_at": str(dp)[:10] if dp else "",
+                "job_id": url or f"{comp}:{title}",
+                "description": str(r.get("description", "") or ""),
+                "new_grad": ats.is_explicit_junior(title),
+            })
+        return out
+
+    out: list[dict] = []
+    for company in companies:
+        rows: list[dict] = []
+        cid = LINKEDIN_COMPANY_IDS.get(company)
+        # 1) precise: target the company's own LinkedIn postings by ID
+        if cid:
+            try:
+                df = scrape_jobs(
+                    site_name=["linkedin"], search_term="software engineer",
+                    linkedin_company_ids=[cid], location="United States",
+                    results_wanted=40, hours_old=hours_old,
+                    linkedin_fetch_description=True, verbose=0)
+                rows = _rows(df, company, trust=True)
+            except Exception:
+                rows = []
+        # 2) fallback: name-filtered keyword search if no ID or the ID found none
+        if not rows:
+            try:
+                df = scrape_jobs(
+                    site_name=["linkedin", "indeed"],
+                    search_term=f"{company} software engineer",
+                    location="United States", country_indeed="USA",
+                    results_wanted=30, hours_old=hours_old,
+                    linkedin_fetch_description=True, verbose=0)
+                rows = _rows(df, company, trust=False)
+            except Exception:
+                rows = []
+        out.extend(rows)
+    return out
+
+
 def resolve_workday(db_path: str = h1b_db.DB_PATH) -> int:
     """Probe & cache the curated Workday endpoints. Returns count added."""
     conn = h1b_db.connect(db_path)
@@ -210,14 +317,21 @@ def resolve_boards(n: int = 500, by: str = "new_approval",
     return {"checked": len(todo), "found": len(found), "total_valid": total, "boards": found}
 
 
-def valid_boards(db_path: str = h1b_db.DB_PATH) -> list[tuple[str, str]]:
-    """Cached working boards as (ats, token) pairs."""
+def valid_boards(db_path: str = h1b_db.DB_PATH,
+                 include_custom: bool = True) -> list[tuple[str, str]]:
+    """Cached working boards as (ats, token) pairs. include_custom appends the
+    native custom boards (Amazon, …); set False for original-sources-only."""
     conn = h1b_db.connect(db_path)
     _ensure_schema(conn)
     rows = conn.execute(
         "SELECT ats, board_token FROM greenhouse_boards WHERE valid = 1 AND board_token IS NOT NULL").fetchall()
     conn.close()
-    return [(r["ats"] or "greenhouse", r["board_token"]) for r in rows]
+    boards = [(r["ats"] or "greenhouse", r["board_token"]) for r in rows]
+    if include_custom:
+        for b in CUSTOM_BOARDS:
+            if b not in boards:
+                boards.append(b)
+    return boards
 
 
 def valid_tokens(db_path: str = h1b_db.DB_PATH) -> list[str]:
@@ -260,14 +374,66 @@ def _annotate_seen(jobs: list[dict], db_path: str) -> list[dict]:
     return jobs
 
 
+# ── Cross-email dedup: track which roles have gone out in a digest ──
+_EMAILED_SCHEMA = """
+CREATE TABLE IF NOT EXISTS emailed_jobs (
+    job_key TEXT PRIMARY KEY,
+    emailed_at TEXT,
+    to_email TEXT,
+    title TEXT,
+    company TEXT
+);
+"""
+
+
+def _job_key(j: dict) -> str:
+    return f"{j['ats']}:{j.get('job_id')}"
+
+
+def emailed_keys(db_path: str = h1b_db.DB_PATH) -> set[str]:
+    """Set of job keys that have appeared in a previously-sent digest."""
+    conn = h1b_db.connect(db_path)
+    conn.executescript(_EMAILED_SCHEMA)
+    keys = {r["job_key"] for r in conn.execute("SELECT job_key FROM emailed_jobs")}
+    conn.close()
+    return keys
+
+
+def filter_unemailed(jobs: list[dict], db_path: str = h1b_db.DB_PATH) -> list[dict]:
+    """Drop roles already sent in a prior digest (keeps order)."""
+    sent = emailed_keys(db_path)
+    return [j for j in jobs if _job_key(j) not in sent]
+
+
+def mark_emailed(jobs: list[dict], to_email: str = "",
+                 db_path: str = h1b_db.DB_PATH) -> None:
+    """Record roles as sent so future digests won't repeat them."""
+    conn = h1b_db.connect(db_path)
+    conn.executescript(_EMAILED_SCHEMA)
+    now = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+    for j in jobs:
+        conn.execute(
+            "INSERT OR IGNORE INTO emailed_jobs (job_key, emailed_at, to_email, title, company) "
+            "VALUES (?,?,?,?,?)",
+            (_job_key(j), now, to_email, j.get("title", ""), j.get("company", "")))
+    conn.commit()
+    conn.close()
+
+
 def daily_fresh_swe(us_only: bool = True, limit: int | None = None,
-                    new_only: bool = False, db_path: str = h1b_db.DB_PATH) -> list[dict]:
+                    new_only: bool = False, include_aggregator: bool = True,
+                    include_custom: bool = True,
+                    db_path: str = h1b_db.DB_PATH) -> list[dict]:
     """Explicit-junior SWE roles across all cached boards.
 
     Sorted by first-seen (newest-to-you first), then last-updated. Set
-    new_only=True to return only postings first seen today.
+    new_only=True to return only postings first seen today. include_custom adds
+    the native custom boards (Amazon); include_aggregator merges big-tech roles
+    without a usable native board (Google/Microsoft/Apple/Tesla/Bloomberg/
+    LinkedIn) pulled via JobSpy. Set both False for original-sources-only
+    (Workday + Greenhouse/Lever/Ashby).
     """
-    boards = valid_boards(db_path)
+    boards = valid_boards(db_path, include_custom=include_custom)
     if not boards:
         raise RuntimeError("No resolved boards yet. Run: python src/h1b_greenhouse.py --resolve")
 
@@ -287,6 +453,13 @@ def daily_fresh_swe(us_only: bool = True, limit: int | None = None,
     with ThreadPoolExecutor(max_workers=12) as ex:
         for batch in ex.map(_one, boards):
             results.extend(batch)
+
+    # Merge big-tech roles pulled via the aggregator (Google/MS/Apple/Tesla).
+    if include_aggregator:
+        try:
+            results.extend(aggregator_swe(us_only=us_only))
+        except Exception as e:
+            print(f"  ⚠ aggregator fetch failed: {e}")
 
     # de-dup identical postings across weak/duplicate slugs
     seen_keys, deduped = set(), []

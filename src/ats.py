@@ -22,6 +22,8 @@ import re
 import requests
 
 TIMEOUT = 15
+_UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+       "(KHTML, like Gecko) Chrome/122.0 Safari/537.36")
 
 # ── Title / location filters (strict, explicit-junior) ────────
 # Must contain an actual SOFTWARE role keyword. Bare "engineer i" is NOT here
@@ -249,8 +251,53 @@ def _workday(slug: str) -> list[dict]:
     return out
 
 
+# ── Provider: Amazon (native board — amazon.jobs) ─────────────
+# Amazon runs its own board with a clean public JSON search. It is NOT
+# slug-based — there's one global board — so `slug` is ignored. We pull the
+# most-recent US software roles; the pipeline's junior/US filters narrow them.
+# Included via h1b_greenhouse.CUSTOM_BOARDS, not the sponsor-slug resolver.
+def _amazon_date(s: str) -> str:
+    """Parse amazon.jobs 'posted_date' (e.g. 'July  1, 2026') -> 'YYYY-MM-DD'."""
+    s = re.sub(r"\s+", " ", (s or "").strip())
+    try:
+        return dt.datetime.strptime(s, "%B %d, %Y").strftime("%Y-%m-%d")
+    except ValueError:
+        return ""
+
+
+def _amazon(slug: str = "amazon") -> list[dict]:
+    base = "https://www.amazon.jobs"
+    out = []
+    for offset in range(0, 500, 100):  # a few pages of the freshest roles
+        try:
+            r = requests.get(
+                f"{base}/en/search.json", timeout=TIMEOUT,
+                headers={"User-Agent": _UA},
+                params={"base_query": "software engineer", "country": "USA",
+                        "sort": "recent", "result_limit": 100, "offset": offset})
+            if r.status_code != 200:
+                break
+            jobs = (r.json() or {}).get("jobs", []) or []
+        except Exception:
+            break
+        if not jobs:
+            break
+        for j in jobs:
+            out.append({
+                "company": "amazon", "ats": "amazon",
+                "title": j.get("title", ""),
+                "location": j.get("normalized_location", "") or j.get("location", ""),
+                "url": base + (j.get("job_path", "") or ""),
+                "updated_at": _amazon_date(j.get("posted_date", "")),
+                "job_id": str(j.get("id_icims") or j.get("id") or ""),
+                # amazon.jobs returns the JD inline — capture it for fit ranking.
+                "description": _strip_html(j.get("description", "")),
+            })
+    return out
+
+
 _PROVIDERS = {"greenhouse": _greenhouse, "lever": _lever,
-              "ashby": _ashby, "workday": _workday}
+              "ashby": _ashby, "workday": _workday, "amazon": _amazon}
 
 
 def fetch(provider: str, slug: str) -> list[dict]:
@@ -286,6 +333,9 @@ _ASHBY_POST_QUERY = (
 
 def description(job: dict) -> str:
     """Best-effort full JD text for one job. '' if unavailable."""
+    # Inline JD already captured at fetch time (Amazon native, aggregator, Lever).
+    if job.get("description"):
+        return job["description"]
     prov, slug, jid = job.get("ats"), job.get("company"), job.get("job_id")
     try:
         if prov == "lever":

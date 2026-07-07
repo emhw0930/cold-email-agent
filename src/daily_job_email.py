@@ -28,6 +28,35 @@ import config
 
 OUTREACH_PORT = 8770  # local outreach_server.py (the "Email recruiters" button)
 
+# Big-name employers surfaced as "browse yourself" links instead of individual
+# cards: their boards are huge (Amazon) or block scraping (Google/Apple/Tesla/
+# Bloomberg) / would bloat the email. Each link opens their SWE careers search.
+BROWSE_LINKS = [
+    ("Amazon",    "https://www.amazon.jobs/en/search?base_query=software+engineer&loc_query=United+States"),
+    ("Google",    "https://www.google.com/about/careers/applications/jobs/results/?q=software%20engineer&hl=en&target_level=EARLY&location=United%20States"),
+    ("Microsoft", "https://jobs.careers.microsoft.com/global/en/search?q=software%20engineer&lc=United%20States"),
+    ("Apple",     "https://jobs.apple.com/en-us/search?search=software%20engineer&location=united-states-USA"),
+    ("Tesla",     "https://www.tesla.com/careers/search/?query=software%20engineer&region=5"),
+    ("Bloomberg", "https://bloomberg.avature.net/careers/SearchJobs/Software%20engineer?1686=%5B55478%5D&1686_format=2312&listFilterMode=1&jobRecordsPerPage=12&"),
+    ("LinkedIn",  "https://www.linkedin.com/jobs/search/?f_C=1337&f_E=2%2C3&keywords=software%20engineer&location=United%20States&origin=JOB_SEARCH_PAGE_JOB_FILTER"),
+]
+
+
+def _browse_section() -> str:
+    """A compact row of pill links to big employers' own careers search pages."""
+    pills = "".join(
+        f'<a href="{url}" style="display:inline-block;margin:0 8px 8px 0;'
+        f'padding:9px 15px;background:#f1f3f4;color:#1a56c4;font-size:12px;'
+        f'font-weight:600;text-decoration:none;border-radius:18px">{name} &rarr;</a>'
+        for name, url in BROWSE_LINKS)
+    return (
+        '<tr><td style="padding:22px 6px 6px 6px">'
+        '<div style="font-size:15px;font-weight:700;color:#202124">Browse these employers directly</div>'
+        '<div style="font-size:12px;color:#80868b;margin-top:2px;margin-bottom:12px">'
+        'Big or scrape-blocked boards — open each one’s software-engineer search and filter yourself.'
+        '</div>'
+        f'{pills}</td></tr>')
+
 
 def _card_link(job: dict) -> str:
     """Real job URL, or — if a click tracker is configured — a tracker link that
@@ -39,8 +68,9 @@ def _card_link(job: dict) -> str:
     sep = "&" if "?" in config.CLICK_TRACKER_URL else "?"
     return f"{config.CLICK_TRACKER_URL}{sep}{q}"
 
-# A calm, distinct color per ATS badge.
-_ATS_COLOR = {"greenhouse": "#1a7f5a", "lever": "#5a4fcf", "ashby": "#b4531f"}
+# A calm, distinct color per ATS / source badge.
+_ATS_COLOR = {"greenhouse": "#1a7f5a", "lever": "#5a4fcf", "ashby": "#b4531f",
+              "amazon": "#c45500", "linkedin": "#0a66c2", "indeed": "#2557a7"}
 # Monogram background palette (deterministic by first letter).
 _MONO = ["#e8f0fe", "#e6f4ea", "#fce8e6", "#fef7e0", "#f3e8fd", "#e0f7fa"]
 
@@ -137,7 +167,7 @@ def build_html(jobs: list[dict]) -> str:
     today = dt.date.today().strftime("%A, %B %-d, %Y")
     n_total = len(jobs)
     n_new = sum(1 for j in jobs if j.get("is_new"))
-    n_boards = len(hg.valid_boards())
+    n_boards = len(hg.valid_boards(include_custom=False))
 
     # Pin roles first seen today at the top, keep the rest (best-fit order) below.
     new_jobs = [j for j in jobs if j.get("is_new")]
@@ -193,12 +223,17 @@ def build_html(jobs: list[dict]) -> str:
             <!-- Job cards: NEW today section (if any) then all best-fit roles -->
             {grid}
 
+            <!-- Browse-yourself links for big / scrape-blocked employers -->
+            {_browse_section()}
+
             <!-- Footer -->
             <tr><td style="padding:16px 6px 4px 6px">
               <div style="border-top:1px solid #eaecef;padding-top:14px;
                    font-size:11px;color:#9aa0a6;line-height:1.5">
-                Sent automatically by cold-email-agent · watching {n_boards} sponsor boards
-                across Greenhouse, Lever &amp; Ashby.<br>
+                Sent automatically by h1b-job-agent · watching {n_boards} sponsor boards
+                across Greenhouse, Lever, Ashby &amp; Workday. Big employers with their own
+                boards (Amazon, Google, Microsoft, Apple, Tesla, Bloomberg, LinkedIn) are
+                linked above to browse directly.<br>
                 &ldquo;First seen&rdquo; is the date this tool first spotted the posting.
               </div>
             </td></tr>
@@ -223,8 +258,8 @@ def send_digest(to_email: str, jobs: list[dict]) -> None:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--to", required=True, help="recipient email for the digest")
-    ap.add_argument("--top", type=int, default=None,
-                    help="optional cap on number of roles (default: no cap — send all)")
+    ap.add_argument("--top", type=int, default=40,
+                    help="cap on number of roles per email (default: 40; pass 0 for no cap)")
     ap.add_argument("--new-only", action="store_true",
                     help="only include roles first seen today")
     ap.add_argument("--rank", action="store_true",
@@ -235,10 +270,19 @@ def main():
     args = ap.parse_args()
 
     try:
-        jobs = hg.daily_fresh_swe(us_only=True, new_only=args.new_only, limit=args.top)
+        # Email cards use ORIGINAL sources only (Workday + Greenhouse/Lever/Ashby).
+        # Amazon + the big-tech companies are surfaced as "browse yourself" links
+        # in the digest instead of individual cards (keeps the email short).
+        jobs = hg.daily_fresh_swe(us_only=True, new_only=args.new_only, limit=None,
+                                  include_aggregator=False, include_custom=False)
     except RuntimeError as e:
         print(f"ERROR: {e}", file=sys.stderr)
         sys.exit(1)
+
+    # Cross-email dedup: drop roles already sent in a previous digest.
+    before_dedup = len(jobs)
+    jobs = hg.filter_unemailed(jobs)
+    print(f"  {before_dedup - len(jobs)} roles already emailed before — skipped")
 
     if args.rank and jobs:
         before = len(jobs)
@@ -246,16 +290,24 @@ def main():
         print(f"  ranked top {min(before, args.rank_limit)} by fit; "
               f"{before - len(jobs)} dropped (no sponsorship)")
 
+    # Cap to the freshest N (default: no cap).
+    if args.top:
+        jobs = jobs[:args.top]
+
     print(f"[{dt.datetime.now():%Y-%m-%d %H:%M}] emailing {len(jobs)} roles to {args.to}")
     for j in jobs:
         tag = " NEW" if j.get("is_new") else ""
         print(f"  {j.get('first_seen','')}  [{j['ats']}:{j['company']}]  {j['title']} - {j['location']}{tag}")
 
     if args.dry_run:
-        print("(dry-run — no email sent)")
+        print("(dry-run — no email sent; not marking roles as emailed)")
+        return
+    if not jobs:
+        print("Nothing new to send — every current role was already emailed.")
         return
     send_digest(args.to, jobs)
-    print("Digest emailed.")
+    hg.mark_emailed(jobs, to_email=args.to)
+    print(f"Digest emailed — {len(jobs)} roles sent and marked so they won't repeat.")
 
 
 if __name__ == "__main__":

@@ -54,7 +54,9 @@ _NONSOFTWARE = ["technical support", "support engineer", "sales engineer",
                 "chemical", "biomedical", "optical", "materials",
                 # talent-pool / pipeline postings that aren't real openings
                 "talent community", "talent network", "talent pool",
-                "expression of interest", "general application", "future opportunities"]
+                "expression of interest", "general application", "future opportunities",
+                # internships (user seeks full-time; spaced variants avoid "internal")
+                "internship", " intern ", " intern,", " intern -", "co-op", " coop "]
 
 
 def is_explicit_junior(title: str) -> bool:
@@ -85,7 +87,8 @@ def is_us(location: str) -> bool:
     if not loc:
         return True
     non_us = ["china", "shanghai", "beijing", "shenzhen", "india", "bangalore",
-              "bengaluru", "hyderabad", "pune", "gurgaon", "london", "uk",
+              "bengaluru", "hyderabad", "pune", "gurgaon", "gurugram", "chennai",
+              "mumbai", "delhi", "noida", "asia", "london", "uk",
               "united kingdom", "scotland", "edinburgh", "glasgow", "manchester",
               "wales", "cardiff", "belfast", "cork",
               "canada", "toronto", "vancouver", "montreal",

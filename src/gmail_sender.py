@@ -10,6 +10,7 @@ import base64
 import os
 import random
 import re
+import smtplib
 import socket
 import threading
 import time
@@ -74,6 +75,22 @@ def _get_gmail_service():
     svc = build("gmail", "v1", credentials=creds, cache_discovery=False)
     _thread_local.service = svc
     return svc
+
+
+def send_mime(msg) -> None:
+    """Low-level send of a built MIME message; raises on failure.
+
+    Routes via SMTP with the Gmail App Password when configured (headless —
+    no OAuth browser flow, so it works in CI), else via the Gmail API.
+    """
+    if config.GMAIL_APP_PASSWORD:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as smtp:
+            smtp.login(config.SENDER_EMAIL, config.GMAIL_APP_PASSWORD)
+            smtp.send_message(msg)
+        return
+    service = _get_gmail_service()
+    raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+    service.users().messages().send(userId="me", body={"raw": raw}).execute()
 
 
 # ── Pre-send guard ───────────────────────────────────────────
@@ -176,16 +193,8 @@ def send_email(
             return False
 
     try:
-        service = _get_gmail_service()
-        mime_msg = _build_message(to_email, to_name, subject, body)
-
-        raw = base64.urlsafe_b64encode(mime_msg.as_bytes()).decode()
-        result = service.users().messages().send(
-            userId="me",
-            body={"raw": raw},
-        ).execute()
-
-        print(f"  📧 Sent! Message ID: {result.get('id')}")
+        send_mime(_build_message(to_email, to_name, subject, body))
+        print(f"  📧 Sent to {to_email}")
         return True
 
     except HttpError as e:

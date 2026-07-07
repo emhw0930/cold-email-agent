@@ -7,6 +7,7 @@ assets/*.json
 
 # ── Personal documents ────────────────────────────────────────
 assets/resume.pdf
+assets/resume.txt
 assets/cover_letter.pdf
 
 # ── Python ────────────────────────────────────────────────────
@@ -21,8 +22,9 @@ __pycache__/
 logs/
 *.log
 
-# ── Generated data (rebuilt from the USCIS CSV; too big to commit) ─
-data/*.db
+# data/h1b_employers.db IS committed on purpose (public USCIS-derived data):
+# GitHub Actions runners are ephemeral and need the board cache and the
+# emailed/seen dedup state that live inside it.
 
 # ── OS / editor ───────────────────────────────────────────────
 .DS_Store

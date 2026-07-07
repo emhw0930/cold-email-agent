@@ -15,7 +15,6 @@
 from __future__ import annotations
 
 import argparse
-import base64
 import datetime as dt
 import sys
 from email.mime.text import MIMEText
@@ -245,14 +244,12 @@ def build_html(jobs: list[dict]) -> str:
 
 
 def send_digest(to_email: str, jobs: list[dict]) -> None:
-    service = gmail_sender._get_gmail_service()
     msg = MIMEText(build_html(jobs), "html")
     msg["To"] = to_email
     msg["From"] = config.SENDER_EMAIL
     n = len(jobs)
     msg["Subject"] = f"{n} fresh SWE role{'s' if n != 1 else ''} — {dt.date.today():%b %-d}"
-    raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
-    service.users().messages().send(userId="me", body={"raw": raw}).execute()
+    gmail_sender.send_mime(msg)  # SMTP app-password when set, else Gmail API
 
 
 def main():

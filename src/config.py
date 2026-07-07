@@ -47,6 +47,10 @@ PROSPEO_API_KEY = _require("PROSPEO_API_KEY")
 GMAIL_CREDENTIALS_PATH = _abspath(_optional("GMAIL_CREDENTIALS_PATH", "assets/gmail_credentials.json"))
 GMAIL_TOKEN_PATH = _abspath(_optional("GMAIL_TOKEN_PATH", "assets/gmail_token.json"))
 SENDER_EMAIL = _require("SENDER_EMAIL")
+# Optional Gmail App Password (myaccount.google.com → Security → App passwords).
+# When set, mail goes out via SMTP (smtp.gmail.com:465) instead of the Gmail
+# API — no OAuth browser flow, so it works headless (e.g. GitHub Actions).
+GMAIL_APP_PASSWORD = _optional("GMAIL_APP_PASSWORD").replace(" ", "")
 
 # ── Google Sheets ────────────────────────────────────────────
 SHEETS_SERVICE_ACCOUNT_PATH = _abspath(_optional("SHEETS_SERVICE_ACCOUNT_PATH", "assets/sheets_service_account.json"))

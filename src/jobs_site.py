@@ -9,7 +9,7 @@
 #  the page runs on vanilla JS. Open the output file in a browser.
 #
 #  Usage:
-#    python src/jobs_site.py                 # -> site/index.html
+#    python src/jobs_site.py                 # -> docs/index.html (GitHub Pages)
 #    python src/jobs_site.py --out foo.html  # custom path
 #    python src/jobs_site.py --open          # build + open in browser
 # ============================================================
@@ -25,7 +25,8 @@ from pathlib import Path
 import h1b_greenhouse as hg
 import config
 
-OUT_DEFAULT = Path(config.PROJECT_ROOT) / "site" / "index.html"
+# docs/ because GitHub Pages can only serve a branch's root or /docs folder.
+OUT_DEFAULT = Path(config.PROJECT_ROOT) / "docs" / "index.html"
 
 
 def collect() -> list[dict]:

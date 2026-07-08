@@ -48,11 +48,13 @@ def rebuild_site(jobs: list[dict]) -> bool:
                 "is_new": bool(j.get("is_new")),
                 "first_seen": j.get("first_seen", "") or j.get("updated_at", ""),
             }
-            # fit scores from the (earlier) ranking step ride along; keys are
-            # omitted for unscored roles to keep the embedded JSON small
+            # every role gets a fit score: the LLM score from the ranking step
+            # if it has one, else a free keyword score (fully populates "Best fit")
             if isinstance(j.get("fit_score"), int) and j["fit_score"] >= 0:
-                item["fit_score"] = j["fit_score"]
-                item["fit_reason"] = j.get("fit_reason", "")
+                item["fit_score"], item["fit_reason"] = j["fit_score"], j.get("fit_reason", "")
+            else:
+                item["fit_score"], item["fit_reason"] = fit_ranker.keyword_fit(
+                    item["title"], item["company"])
             site_jobs.append(item)
         html = jobs_site.build(site_jobs, dt.date.today().strftime("%B %-d, %Y"))
         out = Path(config.PROJECT_ROOT) / "docs" / "index.html"

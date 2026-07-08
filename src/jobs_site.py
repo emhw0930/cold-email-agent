@@ -27,6 +27,7 @@ import webbrowser
 from pathlib import Path
 
 import h1b_greenhouse as hg
+import fit_ranker
 import config
 
 # docs/ because GitHub Pages can only serve a branch's root or /docs folder.
@@ -63,9 +64,13 @@ def collect() -> list[dict]:
             "is_new": bool(j.get("is_new")),
             "first_seen": j.get("first_seen", "") or j.get("updated_at", ""),
         }
+        # every role gets a fit score: an LLM score if the ranker produced one,
+        # else a free keyword score so "Best fit" is fully populated
         if isinstance(j.get("fit_score"), int) and j["fit_score"] >= 0:
-            item["fit_score"] = j["fit_score"]
-            item["fit_reason"] = j.get("fit_reason", "")
+            item["fit_score"], item["fit_reason"] = j["fit_score"], j.get("fit_reason", "")
+        else:
+            item["fit_score"], item["fit_reason"] = fit_ranker.keyword_fit(
+                item["title"], item["company"])
         out.append(item)
     return out
 
@@ -354,10 +359,9 @@ function render() {
                      (b.first_seen||'').localeCompare(a.first_seen||''))
     : (b.first_seen||'').localeCompare(a.first_seen||''));
 
-  const nScored = JOBS.filter(j => j.fit_score != null).length;
   countEl.textContent = rows.length + ' role' + (rows.length!==1?'s':'') +
     (rows.length!==JOBS.length ? ' of ' + JOBS.length : '') +
-    (s === 'fit' ? ` · ${nScored} scored against the résumé in recent digests; unscored roles sort last` : '');
+    (s === 'fit' ? ' · ranked by résumé fit (LLM-scored where available, else keyword match)' : '');
 
   grid.innerHTML = rows.length ? rows.map(j => `
     <a class="card" href="${esc(j.url)}" target="_blank" rel="noopener">

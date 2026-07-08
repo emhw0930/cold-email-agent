@@ -73,6 +73,76 @@ def resume_text() -> str:
     return config.YOUR_BIO
 
 
+# ── Free keyword fit score (always available, no API) ────────
+# The LLM scorers below are quality-first but quota/cost-bound. This
+# deterministic scorer runs on every role instantly so the site's
+# "Best fit" sort is always fully populated. Titles carry most of the
+# signal; JD text (when available) sharpens the tech-stack overlap.
+
+# Tech terms the résumé demonstrates strength in (kept broad; matched
+# case-insensitively as substrings against the résumé + each posting).
+_SKILLS = [
+    "python", "java", "c++", "javascript", "typescript", "react", "node",
+    "fastapi", "spring", "flask", "django", "langgraph", "langchain",
+    "llm", "ai", "ml", "machine learning", "gcp", "google cloud", "aws",
+    "cloud run", "bigquery", "bigtable", "kubernetes", "docker", "sql",
+    "nosql", "distributed", "backend", "full stack", "fullstack", "frontend",
+    "api", "microservice", "socket", "data", "platform", "web",
+]
+# Résumé's strongest themes → a title hit on any of these boosts fit.
+_STRENGTHS = ["software engineer", "software developer", "backend", "full stack",
+              "fullstack", "full-stack", "ai", "ml", "machine learning", "data",
+              "platform", "cloud", "distributed", "web", "api"]
+# Off-profile domains → a title hit here means a poor fit for this candidate.
+_OFFFIT = ["embedded", "firmware", "hardware", "fpga", "asic", "mainframe",
+           "nonstop", "cobol", "kernel", "driver", "device", "rf ", "analog",
+           "mechanical", "electrical", "clearance", "ceph", "packet forwarding"]
+_JUNIOR = ["new grad", "new-grad", "newgrad", "university", "early career",
+           "early-career", "entry level", "entry-level", "associate", "graduate"]
+
+
+@lru_cache(maxsize=1)
+def _resume_skills() -> frozenset[str]:
+    r = resume_text().lower()
+    return frozenset(s for s in _SKILLS if s in r)
+
+
+def keyword_fit(title: str, company: str = "", jd: str = "") -> tuple[int, str]:
+    """Deterministic 0-100 résumé-fit score from title (+JD if given). Free."""
+    t = f" {title.lower()} "
+    text = f"{title} {company} {jd}".lower()
+    score, hits = 52, []  # base for a junior SWE role that already passed filters
+
+    if any(j in t for j in _JUNIOR) or t.rstrip().endswith(" i "):
+        score += 16; hits.append("new-grad")
+    strengths = [s for s in _STRENGTHS if s in t]
+    score += min(len(strengths), 3) * 8
+    if strengths:
+        hits.append(strengths[0])
+
+    # tech-stack overlap between résumé and the posting (title + JD)
+    overlap = [s for s in _resume_skills() if s in text and s not in ("data", "web")]
+    score += min(len(overlap), 4) * 4
+    if overlap and not hits:
+        hits.append(overlap[0])
+
+    if any(o in t for o in _OFFFIT):
+        score -= 24; hits.append("off-stack")
+
+    score = max(5, min(96, score))
+    reason = "keyword: " + (", ".join(dict.fromkeys(hits)) if hits else "generic SWE role")
+    return score, reason[:80]
+
+
+def ensure_scored(job: dict) -> dict:
+    """Guarantee job has a fit_score. Keeps an existing (LLM) score; otherwise
+    fills a free keyword score. Mutates and returns the job."""
+    if not (isinstance(job.get("fit_score"), int) and job["fit_score"] >= 0):
+        s, reason = keyword_fit(job.get("title", ""), job.get("company", ""))
+        job["fit_score"], job["fit_reason"] = s, reason
+    return job
+
+
 # ── Fit scoring via Claude ───────────────────────────────────
 _client: anthropic.Anthropic | None = None
 
@@ -190,14 +260,16 @@ def _score_one(title: str, company: str, jd: str, resume: str) -> tuple[int, str
     """Return (score 0-100, one-line reason).
 
     Provider: Gemini free tier when GEMINI_API_KEY is set, else Claude.
-    A Gemini failure returns -1 rather than silently spending Claude credits.
+    On any LLM failure (quota exhausted, error) fall back to the free
+    keyword scorer so the role is still scored — never spends Claude
+    credits when a Gemini key is present.
     """
     try:
         if config.GEMINI_API_KEY:
             return _score_one_gemini(title, company, jd, resume)
         return _score_one_claude(title, company, jd, resume)
-    except Exception as e:
-        return -1, f"score error: {e}"[:80]
+    except Exception:
+        return keyword_fit(title, company, jd)
 
 
 def enrich(jobs: list[dict], limit: int = 40, drop_no_sponsorship: bool = True) -> list[dict]:

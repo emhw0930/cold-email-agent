@@ -102,16 +102,24 @@ def _prompt(title: str, company: str, jd: str, resume: str) -> str:
 
 def _parse_score(text: str) -> tuple[int, str]:
     m = re.search(r"\{.*\}", text, re.S)
-    data = json.loads(m.group(0)) if m else {}
-    score = int(data.get("score", 0))
+    if not m:
+        raise ValueError(f"no JSON in model reply: {text[:60]!r}")
+    data = json.loads(m.group(0))
+    if "score" not in data:
+        raise ValueError("model reply JSON lacks 'score'")
+    score = int(data["score"])
     return max(0, min(100, score)), str(data.get("reason", ""))[:80]
 
 
-# ── Gemini free-tier throttle ────────────────────────────────
-# The free tier allows ~10-15 requests/minute. Serialize calls and space
-# them ~4.5s apart (~13/min) so a 150-role run stays under the limit.
-_GEMINI_URL = ("https://generativelanguage.googleapis.com/v1beta/models/"
-               f"{config.GEMINI_MODEL}:generateContent")
+# ── Gemini free-tier throttle + model fallback ───────────────
+# Free-tier quotas are PER MODEL and much smaller than advertised
+# (empirically ~150-160 requests/day for flash-lite). We space calls
+# ~4.5s apart for the RPM limit, and keep a fallback chain of models:
+# when one model's DAILY quota is exhausted (429 with a PerDay quotaId),
+# it's taken out of rotation for the rest of the run and the next
+# model's separate daily bucket is used instead.
+_GEMINI_MODELS = list(dict.fromkeys([config.GEMINI_MODEL, "gemini-2.5-flash"]))
+_gemini_dead: set[str] = set()   # models whose daily quota is gone (this run)
 _gemini_lock = threading.Lock()
 _gemini_next_ok = 0.0
 _GEMINI_SPACING = 4.5  # seconds between calls
@@ -126,25 +134,48 @@ def _gemini_throttle() -> None:
         _gemini_next_ok = time.monotonic() + _GEMINI_SPACING
 
 
+def _quota_is_daily(resp) -> bool:
+    try:
+        for d in resp.json().get("error", {}).get("details", []):
+            for v in d.get("violations", []):
+                if "PerDay" in v.get("quotaId", ""):
+                    return True
+    except Exception:
+        pass
+    return False
+
+
 def _score_one_gemini(title: str, company: str, jd: str, resume: str) -> tuple[int, str]:
-    """Score via Google Gemini (free tier). Retries once on a 429."""
+    """Score via Google Gemini (free tier), falling through the model chain."""
     body = {
         "contents": [{"parts": [{"text": _prompt(title, company, jd, resume)}]}],
-        "generationConfig": {"maxOutputTokens": 500, "temperature": 0.1},
+        # thinkingBudget 0 disables 2.5-family "thinking", which otherwise
+        # silently consumes maxOutputTokens and truncates the JSON reply
+        "generationConfig": {"maxOutputTokens": 500, "temperature": 0.1,
+                             "thinkingConfig": {"thinkingBudget": 0}},
     }
-    for attempt in (1, 2):
-        _gemini_throttle()
-        r = requests.post(_GEMINI_URL, json=body, timeout=45,
-                          headers={"x-goog-api-key": config.GEMINI_API_KEY,
-                                   "Content-Type": "application/json"})
-        if r.status_code == 429 and attempt == 1:
-            time.sleep(25)  # free-tier RPM window; back off and retry once
+    for model in _GEMINI_MODELS:
+        if model in _gemini_dead:
             continue
-        r.raise_for_status()
-        data = r.json()
-        text = data["candidates"][0]["content"]["parts"][0]["text"]
-        return _parse_score(text)
-    raise RuntimeError("gemini rate-limited")
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+        for attempt in (1, 2):
+            _gemini_throttle()
+            r = requests.post(url, json=body, timeout=45,
+                              headers={"x-goog-api-key": config.GEMINI_API_KEY,
+                                       "Content-Type": "application/json"})
+            if r.status_code == 429:
+                if _quota_is_daily(r):
+                    _gemini_dead.add(model)   # dead for the day — next model
+                    print(f"  ⚠ {model}: daily quota exhausted, switching model")
+                    break
+                if attempt == 1:
+                    time.sleep(25)  # per-minute window; back off and retry once
+                    continue
+                break  # persistent RPM trouble — try the next model
+            r.raise_for_status()
+            text = r.json()["candidates"][0]["content"]["parts"][0]["text"]
+            return _parse_score(text)
+    raise RuntimeError("gemini quota exhausted on all models")
 
 
 def _score_one_claude(title: str, company: str, jd: str, resume: str) -> tuple[int, str]:

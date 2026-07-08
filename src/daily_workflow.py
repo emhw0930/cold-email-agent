@@ -4,13 +4,15 @@
 #  The one daily entry point (GitHub Actions or launchd/cron):
 #
 #    1. Fetch all current roles (Workday + Greenhouse/Lever/Ashby)
-#    2. Regenerate the public website with ALL of them (docs/index.html)
-#    3. Drop roles already emailed in past digests
-#    4. Rank the freshest by resume fit (Claude) + sponsorship gate
-#    5. Email the TOP 10 and mark them so they never repeat
+#    2. Drop roles already emailed in past digests
+#    3. Rank the freshest by resume fit (Gemini free tier / Claude)
+#       + sponsorship gate, then email the TOP 10 and mark them
+#    4. Regenerate the public website with ALL roles — the fit
+#       scores just computed ride along ("Best fit" sort + chips)
 #
-#  The site step and the email step are isolated: a failure in one
-#  never blocks the other.
+#  The email step and the site step are isolated: a failure in one
+#  never blocks the other (ranking runs first so the site can show
+#  scores, but the site is written regardless of email outcome).
 #
 #  Usage:
 #    python src/daily_workflow.py --to you@example.com
@@ -36,7 +38,7 @@ def rebuild_site(jobs: list[dict]) -> bool:
     try:
         site_jobs = []
         for j in jobs:
-            site_jobs.append({
+            item = {
                 "company": (j.get("company") or "").split("|")[0],
                 "title": j.get("title", ""),
                 "location": j.get("location", "") or "Location N/A",
@@ -45,7 +47,13 @@ def rebuild_site(jobs: list[dict]) -> bool:
                 "new_grad": bool(j.get("new_grad")),
                 "is_new": bool(j.get("is_new")),
                 "first_seen": j.get("first_seen", "") or j.get("updated_at", ""),
-            })
+            }
+            # fit scores from the (earlier) ranking step ride along; keys are
+            # omitted for unscored roles to keep the embedded JSON small
+            if isinstance(j.get("fit_score"), int) and j["fit_score"] >= 0:
+                item["fit_score"] = j["fit_score"]
+                item["fit_reason"] = j.get("fit_reason", "")
+            site_jobs.append(item)
         html = jobs_site.build(site_jobs, dt.date.today().strftime("%B %-d, %Y"))
         out = Path(config.PROJECT_ROOT) / "docs" / "index.html"
         out.parent.mkdir(parents=True, exist_ok=True)
@@ -74,7 +82,9 @@ def email_top10(jobs: list[dict], to_email: str, rank_limit: int,
         print(f"  Ranking {n_rank} roles by resume fit …")
         ranked = fit_ranker.enrich(fresh, limit=n_rank, drop_no_sponsorship=True)
         scored = [j for j in ranked if isinstance(j.get("fit_score"), int) and j["fit_score"] >= 0]
-        top10 = (scored or ranked)[:10]
+        # scored roles first (best fit), padded with unscored (newest) to 10
+        seen_ids = set(map(id, scored))
+        top10 = (scored + [j for j in ranked if id(j) not in seen_ids])[:10]
 
         print(f"  Top {len(top10)}:")
         for j in top10:
@@ -98,8 +108,9 @@ def main() -> None:
     ap = argparse.ArgumentParser(
         description="Daily run: rebuild the site with all roles + email the top-10 by fit")
     ap.add_argument("--to", required=True, help="recipient email for the top-10 digest")
-    ap.add_argument("--rank-limit", type=int, default=150,
-                    help="max roles to score with Claude (cost bound; default 150)")
+    ap.add_argument("--rank-limit", type=int, default=120,
+                    help="max roles to score per run (default 120 — leaves headroom "
+                         "under Gemini's real free-tier daily quota, ~150/model)")
     ap.add_argument("--dry-run", action="store_true",
                     help="write the site but don't send email or mark roles")
     args = ap.parse_args()
@@ -113,8 +124,10 @@ def main() -> None:
         sys.exit(1)
     print(f"  Fetched {len(jobs)} roles from the boards")
 
-    site_ok = rebuild_site(jobs)
+    # rank + email FIRST — fit scores land on the shared job dicts, so the
+    # site build below picks them up for the "Best fit" sort
     email_ok = email_top10(jobs, args.to, args.rank_limit, args.dry_run)
+    site_ok = rebuild_site(jobs)
 
     if site_ok and email_ok:
         print("Done: site rebuilt + digest handled.")

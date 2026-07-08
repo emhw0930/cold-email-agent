@@ -53,7 +53,7 @@ def collect() -> list[dict]:
                               include_custom=False)
     out = []
     for j in jobs:
-        out.append({
+        item = {
             "company": (j.get("company") or "").split("|")[0],  # clean Workday token
             "title": j.get("title", ""),
             "location": j.get("location", "") or "Location N/A",
@@ -62,7 +62,11 @@ def collect() -> list[dict]:
             "new_grad": bool(j.get("new_grad")),
             "is_new": bool(j.get("is_new")),
             "first_seen": j.get("first_seen", "") or j.get("updated_at", ""),
-        })
+        }
+        if isinstance(j.get("fit_score"), int) and j["fit_score"] >= 0:
+            item["fit_score"] = j["fit_score"]
+            item["fit_reason"] = j.get("fit_reason", "")
+        out.append(item)
     return out
 
 
@@ -84,6 +88,7 @@ _PAGE = """<!DOCTYPE html>
 <title>Fresh SWE Roles · __COUNT__</title>
 <meta name="description" content="Entry-level software engineer roles at verified H-1B sponsors, refreshed daily.">
 <meta name="color-scheme" content="dark light">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%236366f1'/%3E%3Cstop offset='1' stop-color='%2338bdf8'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='14' fill='url(%23g)'/%3E%3Ctext x='32' y='45' font-family='Arial,Helvetica,sans-serif' font-size='30' font-weight='800' fill='white' text-anchor='middle'%3EH1%3C/text%3E%3C/svg%3E">
 <script>
   // set theme before first paint: saved choice, else system preference
   document.documentElement.dataset.theme =
@@ -104,6 +109,7 @@ _PAGE = """<!DOCTYPE html>
     --toolbar-bg:rgba(11,16,28,.72); --menu-bg:#0d1322;
     --ok:#4ade80; --ok-bg:rgba(74,222,128,.14); --ok-line:rgba(74,222,128,.3);
     --vio:#c4b5fd; --vio-bg:rgba(167,139,250,.14); --vio-line:rgba(167,139,250,.3);
+    --amb:#fbbf24; --amb-bg:rgba(251,191,36,.12); --amb-line:rgba(251,191,36,.3);
     --chip-on-bg:rgba(99,102,241,.16); --chip-on-line:rgba(99,102,241,.55); --chip-on-fg:#c7d2fe;
     --shadow:0 14px 34px rgba(0,0,0,.36);
     --glow1:rgba(99,102,241,.16); --glow2:rgba(56,189,248,.10); --glow3:rgba(167,139,250,.10);
@@ -117,6 +123,7 @@ _PAGE = """<!DOCTYPE html>
     --toolbar-bg:rgba(247,248,251,.82); --menu-bg:#ffffff;
     --ok:#15803d; --ok-bg:rgba(22,163,74,.10); --ok-line:rgba(22,163,74,.28);
     --vio:#6d28d9; --vio-bg:rgba(124,58,237,.09); --vio-line:rgba(124,58,237,.25);
+    --amb:#a16207; --amb-bg:rgba(202,138,4,.10); --amb-line:rgba(202,138,4,.28);
     --chip-on-bg:rgba(99,102,241,.10); --chip-on-line:rgba(99,102,241,.5); --chip-on-fg:#4338ca;
     --shadow:0 14px 30px rgba(15,23,42,.12);
     --glow1:rgba(99,102,241,.09); --glow2:rgba(56,189,248,.07); --glow3:rgba(167,139,250,.07);
@@ -231,6 +238,9 @@ _PAGE = """<!DOCTYPE html>
     border:1px solid var(--ok-line); }
   .b-grad { background:var(--vio-bg); color:var(--vio);
     border:1px solid var(--vio-line); }
+  .b-fit-hi  { background:var(--ok-bg);  color:var(--ok);  border:1px solid var(--ok-line); }
+  .b-fit-mid { background:var(--amb-bg); color:var(--amb); border:1px solid var(--amb-line); }
+  .b-fit-lo  { background:var(--glass);  color:var(--muted); border:1px solid var(--line); }
   .b-src { background:var(--glass); border:1px solid var(--line); }
   .seen { font-size:11px; color:var(--faint); margin-left:auto; }
   .empty { grid-column:1/-1; text-align:center; color:var(--faint);
@@ -269,6 +279,7 @@ _PAGE = """<!DOCTYPE html>
     <label class="tog"><input type="checkbox" id="gradOnly"> New-grad only</label>
     <select id="sort">
       <option value="seen">Newest first</option>
+      <option value="fit">Best fit</option>
       <option value="company">Company A–Z</option>
       <option value="title">Title A–Z</option>
     </select>
@@ -321,6 +332,12 @@ function monoStyle(name) {
   let h = 0; for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) % 360;
   return `background:linear-gradient(135deg,hsl(${h},62%,52%),hsl(${(h+45)%360},62%,40%))`;
 }
+// résumé-fit chip (only for roles scored in a recent digest run)
+function fitChip(j) {
+  if (j.fit_score == null) return '';
+  const cls = j.fit_score >= 80 ? 'b-fit-hi' : j.fit_score >= 60 ? 'b-fit-mid' : 'b-fit-lo';
+  return `<span class="badge ${cls}" title="${esc(j.fit_reason||'')}">${j.fit_score} fit</span>`;
+}
 
 function render() {
   const term = q.value.trim().toLowerCase();
@@ -333,10 +350,14 @@ function render() {
   const s = sortSel.value;
   rows.sort((a,b) => s === 'company' ? a.company.localeCompare(b.company)
     : s === 'title' ? a.title.localeCompare(b.title)
+    : s === 'fit' ? (((b.fit_score ?? -1) - (a.fit_score ?? -1)) ||
+                     (b.first_seen||'').localeCompare(a.first_seen||''))
     : (b.first_seen||'').localeCompare(a.first_seen||''));
 
+  const nScored = JOBS.filter(j => j.fit_score != null).length;
   countEl.textContent = rows.length + ' role' + (rows.length!==1?'s':'') +
-    (rows.length!==JOBS.length ? ' of ' + JOBS.length : '');
+    (rows.length!==JOBS.length ? ' of ' + JOBS.length : '') +
+    (s === 'fit' ? ` · ${nScored} scored against the résumé in recent digests; unscored roles sort last` : '');
 
   grid.innerHTML = rows.length ? rows.map(j => `
     <a class="card" href="${esc(j.url)}" target="_blank" rel="noopener">
@@ -347,6 +368,7 @@ function render() {
       <div class="title">${esc(j.title)}</div>
       <div class="loc">${esc(j.location)}</div>
       <div class="meta">
+        ${fitChip(j)}
         <span class="badge b-src">${esc(j.source)}</span>
         ${j.new_grad ? '<span class="badge b-grad">New grad</span>' : ''}
         ${j.is_new ? '<span class="badge b-new">New</span>' : ''}

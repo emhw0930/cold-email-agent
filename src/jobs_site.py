@@ -83,6 +83,13 @@ _PAGE = """<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Fresh SWE Roles · __COUNT__</title>
 <meta name="description" content="Entry-level software engineer roles at verified H-1B sponsors, refreshed daily.">
+<meta name="color-scheme" content="dark light">
+<script>
+  // set theme before first paint: saved choice, else system preference
+  document.documentElement.dataset.theme =
+    localStorage.getItem('theme') ||
+    (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
@@ -90,10 +97,29 @@ _PAGE = """<!DOCTYPE html>
   :root {
     --bg:#070b14; --ink:#e8edf6; --muted:#93a0b4; --faint:#5d6a80;
     --glass:rgba(255,255,255,.045); --glass-hi:rgba(255,255,255,.08);
+    --card:rgba(255,255,255,.045);
     --line:rgba(255,255,255,.09); --line-hi:rgba(255,255,255,.22);
     --indigo:#6366f1; --sky:#38bdf8; --violet:#a78bfa;
     --grad:linear-gradient(135deg,#6366f1,#38bdf8);
+    --toolbar-bg:rgba(11,16,28,.72); --menu-bg:#0d1322;
+    --ok:#4ade80; --ok-bg:rgba(74,222,128,.14); --ok-line:rgba(74,222,128,.3);
+    --vio:#c4b5fd; --vio-bg:rgba(167,139,250,.14); --vio-line:rgba(167,139,250,.3);
+    --chip-on-bg:rgba(99,102,241,.16); --chip-on-line:rgba(99,102,241,.55); --chip-on-fg:#c7d2fe;
+    --shadow:0 14px 34px rgba(0,0,0,.36);
+    --glow1:rgba(99,102,241,.16); --glow2:rgba(56,189,248,.10); --glow3:rgba(167,139,250,.10);
     --r-lg:20px; --r-md:14px;
+  }
+  html[data-theme="light"] {
+    --bg:#f7f8fb; --ink:#171c26; --muted:#4b5565; --faint:#8a93a3;
+    --glass:rgba(15,23,42,.04); --glass-hi:rgba(15,23,42,.07);
+    --card:#ffffff;
+    --line:rgba(15,23,42,.10); --line-hi:rgba(15,23,42,.26);
+    --toolbar-bg:rgba(247,248,251,.82); --menu-bg:#ffffff;
+    --ok:#15803d; --ok-bg:rgba(22,163,74,.10); --ok-line:rgba(22,163,74,.28);
+    --vio:#6d28d9; --vio-bg:rgba(124,58,237,.09); --vio-line:rgba(124,58,237,.25);
+    --chip-on-bg:rgba(99,102,241,.10); --chip-on-line:rgba(99,102,241,.5); --chip-on-fg:#4338ca;
+    --shadow:0 14px 30px rgba(15,23,42,.12);
+    --glow1:rgba(99,102,241,.09); --glow2:rgba(56,189,248,.07); --glow3:rgba(167,139,250,.07);
   }
   * { box-sizing:border-box; }
   html { scroll-behavior:smooth; }
@@ -102,13 +128,14 @@ _PAGE = """<!DOCTYPE html>
     font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
     font-size:15px; line-height:1.5;
     -webkit-font-smoothing:antialiased;
+    transition:background .2s ease, color .2s ease;
   }
-  /* soft gradient "void" glows */
+  /* soft gradient glows (subtle in both themes) */
   .glow { position:fixed; inset:0; z-index:-1; pointer-events:none;
     background:
-      radial-gradient(52rem 30rem at 12% -8%, rgba(99,102,241,.16), transparent 60%),
-      radial-gradient(44rem 26rem at 88% 4%, rgba(56,189,248,.10), transparent 60%),
-      radial-gradient(60rem 34rem at 50% 115%, rgba(167,139,250,.10), transparent 60%); }
+      radial-gradient(52rem 30rem at 12% -8%, var(--glow1), transparent 60%),
+      radial-gradient(44rem 26rem at 88% 4%, var(--glow2), transparent 60%),
+      radial-gradient(60rem 34rem at 50% 115%, var(--glow3), transparent 60%); }
   .wrap { max-width:1320px; margin:0 auto; padding:44px 22px 80px; }
   a { color:inherit; }
 
@@ -124,11 +151,11 @@ _PAGE = """<!DOCTYPE html>
   .stat { padding:7px 15px; border-radius:999px; font-size:13px; font-weight:600;
     background:var(--glass); border:1px solid var(--line); color:var(--muted); }
   .stat b { color:var(--ink); font-weight:700; }
-  .stat.hot b { color:#4ade80; }
+  .stat.hot b { color:var(--ok); }
 
   /* ── Browse-direct pills (top of page) ────────────── */
   .browse { border:1px solid var(--line); border-radius:var(--r-lg);
-    background:var(--glass); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+    background:var(--card); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
     padding:20px 22px 16px; margin-bottom:30px; }
   .browse h2 { font-family:'Space Grotesk',sans-serif; font-size:17px;
     font-weight:600; margin:0 0 3px; }
@@ -148,7 +175,7 @@ _PAGE = """<!DOCTYPE html>
   .toolbar { position:sticky; top:12px; z-index:20; display:flex; flex-wrap:wrap;
     gap:10px; align-items:center; padding:12px 14px; margin-bottom:14px;
     border:1px solid var(--line); border-radius:var(--r-lg);
-    background:rgba(11,16,28,.72); backdrop-filter:blur(18px);
+    background:var(--toolbar-bg); backdrop-filter:blur(18px);
     -webkit-backdrop-filter:blur(18px); }
   input[type=search] { flex:1; min-width:200px; padding:10px 15px; font:inherit;
     font-size:14px; color:var(--ink); background:var(--glass);
@@ -158,19 +185,19 @@ _PAGE = """<!DOCTYPE html>
   input[type=search]:focus { border-color:var(--indigo);
     box-shadow:0 0 0 3px rgba(99,102,241,.22); }
   .chip { padding:8px 15px; border-radius:999px; font-size:13px; font-weight:600;
-    text-transform:capitalize; cursor:pointer; user-select:none;
+    text-transform:capitalize; cursor:pointer; user-select:none; font-family:inherit;
     background:transparent; border:1px solid var(--line); color:var(--muted);
     transition:all .18s; }
   .chip:hover { border-color:var(--line-hi); color:var(--ink); }
-  .chip.on { background:rgba(99,102,241,.16); border-color:rgba(99,102,241,.55);
-    color:#c7d2fe; }
+  .chip.on { background:var(--chip-on-bg); border-color:var(--chip-on-line);
+    color:var(--chip-on-fg); }
   label.tog { display:flex; align-items:center; gap:7px; font-size:13px;
     font-weight:500; color:var(--muted); cursor:pointer; }
   label.tog input { accent-color:var(--indigo); width:15px; height:15px; }
   select { padding:9px 12px; font:inherit; font-size:13px; color:var(--ink);
     background:var(--glass); border:1px solid var(--line);
     border-radius:var(--r-md); outline:none; cursor:pointer; }
-  select option { background:#0d1322; }
+  select option { background:var(--menu-bg); }
   .count { font-size:13px; color:var(--faint); margin:0 4px 16px; }
 
   /* ── Job cards ────────────────────────────────────── */
@@ -178,12 +205,11 @@ _PAGE = """<!DOCTYPE html>
     gap:14px; }
   .card { display:flex; flex-direction:column; gap:9px; padding:18px;
     border-radius:var(--r-lg); text-decoration:none;
-    background:var(--glass); border:1px solid var(--line);
+    background:var(--card); border:1px solid var(--line);
     backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
     transition:transform .18s, border-color .18s, background .18s, box-shadow .18s; }
   .card:hover { transform:translateY(-3px); border-color:var(--line-hi);
-    background:var(--glass-hi);
-    box-shadow:0 14px 34px rgba(0,0,0,.36), 0 0 0 1px rgba(99,102,241,.14); }
+    box-shadow:var(--shadow), 0 0 0 1px rgba(99,102,241,.14); }
   .co { display:flex; align-items:center; gap:10px; }
   .mono { width:36px; height:36px; border-radius:11px; flex:0 0 auto;
     display:flex; align-items:center; justify-content:center;
@@ -201,10 +227,10 @@ _PAGE = """<!DOCTYPE html>
     margin-top:auto; padding-top:6px; }
   .badge { font-size:10px; font-weight:700; letter-spacing:.05em;
     text-transform:uppercase; padding:3px 9px; border-radius:999px; }
-  .b-new { background:rgba(74,222,128,.14); color:#4ade80;
-    border:1px solid rgba(74,222,128,.3); }
-  .b-grad { background:rgba(167,139,250,.14); color:#c4b5fd;
-    border:1px solid rgba(167,139,250,.3); }
+  .b-new { background:var(--ok-bg); color:var(--ok);
+    border:1px solid var(--ok-line); }
+  .b-grad { background:var(--vio-bg); color:var(--vio);
+    border:1px solid var(--vio-line); }
   .b-src { background:var(--glass); border:1px solid var(--line); }
   .seen { font-size:11px; color:var(--faint); margin-left:auto; }
   .empty { grid-column:1/-1; text-align:center; color:var(--faint);
@@ -246,6 +272,7 @@ _PAGE = """<!DOCTYPE html>
       <option value="company">Company A–Z</option>
       <option value="title">Title A–Z</option>
     </select>
+    <button class="chip" id="themeBtn" title="Toggle light/dark theme">&#9788;</button>
   </div>
 
   <div class="count" id="count"></div>
@@ -328,6 +355,19 @@ function render() {
     </a>`).join('')
     : '<div class="empty">No roles match your filters.</div>';
 }
+
+// light/dark toggle — persists; ☀ shown in dark (click for light), ☾ in light
+const themeBtn = el('themeBtn');
+function syncThemeBtn() {
+  themeBtn.textContent = document.documentElement.dataset.theme === 'light' ? '☾' : '☀';
+}
+themeBtn.onclick = () => {
+  const t = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
+  document.documentElement.dataset.theme = t;
+  localStorage.setItem('theme', t);
+  syncThemeBtn();
+};
+syncThemeBtn();
 
 q.oninput = render; gradOnly.onchange = render; sortSel.onchange = render;
 render();

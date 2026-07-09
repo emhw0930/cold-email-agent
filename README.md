@@ -1,66 +1,85 @@
-# H1B Job Agent
+# H-1B Job Agent
 
-**Live job board → https://emhw0930.github.io/cold-email-agent/** (all current roles,
-refreshed daily by GitHub Actions)
+**A personal job agent for anyone who needs H-1B sponsorship — in *any* field.**
+It builds you a daily job board of roles at confirmed H-1B sponsors, emails you the ones
+that best match your résumé, and helps you cold-email recruiters. Drive the whole thing by
+**talking to [Claude Code](https://claude.com/claude-code)** — you don't need to know the
+terminal.
 
-Two tools for a new-grad job hunt that needs H-1B sponsorship, sharing the same plumbing
-(Gemini/Claude for ranking, Claude for writing, Prospeo for contacts, Gmail for sending,
-Google Sheets for logging):
+> **Example live board (software-engineer setup):** https://emhw0930.github.io/cold-email-agent/
 
-1. **Daily job digest** — every morning, pull fresh entry-level SWE roles from companies
-   that are *both* confirmed H-1B sponsors *and* hiring right now, publish ALL of them to
-   the public site, rank the newest against your résumé, and email you the **top 10**
-   (never repeating a role you've already been sent).
-2. **Cold-email outreach** — for a company you applied to, find the right recruiters and
-   hiring managers, draft a tailored email to each (résumé attached), **preview before
-   sending**, and log every send to a Google Sheet.
+Two tools, one shared pipeline:
 
-Both are **human-in-the-loop**: nothing goes out without your explicit OK. Personalized,
-targeted outreach beats spray-and-pray.
+1. **Daily job board + digest** — every morning it pulls fresh roles from companies that
+   are *both* confirmed H-1B sponsors *and* hiring right now, publishes them all to your
+   own public website, ranks them against your résumé, and emails you the **top 10** (never
+   repeating a role you've already been sent).
+2. **Cold-email outreach** — for a company you applied to, it finds recruiters/hiring
+   managers, drafts a tailored email each (résumé attached), lets you **preview before
+   sending**, and logs every send.
 
 ```
-Daily digest:  H-1B sponsor DB → their ATS boards → fresh junior SWE roles → rank vs. résumé → email top 10
-                (USCIS data)      (Greenhouse/Lever/                          (Gemini free tier,
-                                   Ashby/Workday)                              or Claude)
-
-Outreach:      find people → get their emails → draft tailored email → preview → send → log
-                (web/LinkedIn)  (Prospeo /                (Claude)         (you)   (Gmail) (Sheets)
-                                 known pattern)
+Daily board:  H-1B sponsor DB → their job boards → fresh in-field roles → rank vs. résumé → email top 10
+               (USCIS data)      (Greenhouse/Lever/                        (Gemini free tier,
+                                  Ashby/Workday)                            or Claude)
 ```
 
-Big employers whose boards can't be scraped (Google, Microsoft, Apple, Tesla, Bloomberg,
-LinkedIn) plus Amazon are linked as "browse yourself" pills at the top of the site and in
-each digest email.
+Everything is **human-in-the-loop** (no cold email sends without your OK) and **free to
+run by default** (Gemini's free tier for ranking, a local keyword fallback, free GitHub
+Actions + Pages, Gmail for sending).
 
 ---
 
-## Quick start
+## 🔒 The guarantee: it only ever searches H-1B sponsors
+
+The company list is *derived from the USCIS H-1B Employer Data Hub* — a role can't appear
+unless that employer actually sponsored H-1B — and a second filter drops any posting whose
+description says "no sponsorship." **This holds no matter your field or résumé.** Switching
+to a different job type never weakens it.
+
+---
+
+## Use it with Claude Code (recommended — no terminal needed)
+
+1. **Fork this repo** (or click *Use this template*), then open your copy in **Claude Code**
+   (or claude.ai/code). It auto-reads [`CLAUDE.md`](CLAUDE.md) and knows how to run everything.
+2. **Just tell it what you need.** For example:
+
+   > *"Set this up for me. I'm a new-grad **mechanical engineer** who needs H-1B
+   > sponsorship. Here's my résumé (attached). Send my daily digest to jane@example.com."*
+
+   Claude Code will: save your résumé, fill in your profile and keys, **switch the role
+   filters to your field** (it edits the code for you — mechanical, data, finance, nursing,
+   anything), set up the free daily automation, and show you a preview before anything sends.
+3. **Then just talk to it day to day:**
+   - *"Show me today's best-fit roles."*
+   - *"I applied to Stripe for a Mechanical Engineer role — find 5 recruiters and draft cold
+     emails, but let me review before sending."*
+   - *"Change my digest to send at noon"* / *"add more sponsor companies."*
+
+New users get the ~490 pre-resolved sponsor boards for free (they ship committed in the
+repo), so there's nothing to build before your first run.
+
+**Setup keys & secrets walkthrough → [docs/SETUP.md](docs/SETUP.md)**
+
+---
+
+## Prefer the terminal? (advanced / manual)
 
 ```bash
-# 1. Install
 python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
+cp .env.example .env                                    # keys + profile (see docs/SETUP.md)
+#   assets/resume.pdf                                   # your résumé
 
-# 2. Configure (see docs/SETUP.md for where each value comes from)
-cp .env.example .env          # keys + profile; GMAIL_APP_PASSWORD is the easiest send path
-#   assets/sheets_service_account.json (Sheets)
-#   assets/resume.pdf                  (your résumé)
-#   assets/gmail_credentials.json     (only if using the OAuth path instead of app password)
-
-# 3a. Daily digest — preview a run without emailing
-python src/daily_job_email.py --to you@example.com --dry-run
-
-# 3b. Outreach — preview drafts for a role (no emails sent)
-python src/outreach.py --company stripe.com --title "Software Engineer" --max 5
-
-# 4. Send for real (add --send to outreach)
-python src/outreach.py --company stripe.com --title "Software Engineer" --max 5 --send
+python src/daily_workflow.py --to you@example.com --dry-run   # preview site + top-10, no send
+python src/daily_workflow.py --to you@example.com             # the full daily run
+python src/outreach.py --company stripe.com --title "Software Engineer" --max 5   # outreach preview
 ```
 
-With `GMAIL_APP_PASSWORD` set, sending just works (SMTP). On the OAuth path instead, the
-first send opens a browser once for consent and caches a token.
-
-**Full setup walkthrough → [docs/SETUP.md](docs/SETUP.md)**
+To target a non-software field manually, edit the role-title keywords in `src/ats.py`
+(`_POSITIVE` / `_JUNIOR` / `_SENIOR` / `_NONSOFTWARE`) and the "Fresh SWE roles" display
+strings in `src/jobs_site.py` and `src/daily_job_email.py` — or just ask Claude Code to.
 
 ---
 

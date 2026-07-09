@@ -1,0 +1,86 @@
+# CLAUDE.md — how to run this project with Claude Code
+
+This repo is an **H-1B-sponsor job agent**. Anyone who needs visa sponsorship can fork it
+and drive it entirely through Claude Code — no terminal expertise required. This file is
+your playbook: read it, then help the user set it up and operate it.
+
+## What it does (two halves, one shared pipeline)
+
+1. **Daily job board + digest** — pulls fresh roles from companies that are *confirmed
+   H-1B sponsors*, publishes them all to a public website (GitHub Pages), ranks them
+   against the user's résumé, and emails the user the **top 10** each morning.
+2. **Cold-email outreach** — for a company the user applied to, finds recruiters/hiring
+   managers, drafts a tailored email each (résumé attached), previews, sends, and logs.
+
+## 🔒 The one rule you must never break: H-1B sponsors only
+
+The user's whole reason for this tool is that they need sponsorship. **Every role must come
+from an H-1B sponsor.** Two layers enforce this — never weaken either:
+
+- **Company universe** — the job boards scraped are derived from the USCIS H-1B Employer
+  Data Hub (`data/h1b_employers.db` → `h1b_db.top_sponsors()` → `data/h1b_sponsors.json`).
+  A company cannot appear unless it sponsored H-1B. Do not add non-sponsor job sources.
+- **Per-role gate** — `fit_ranker.says_no_sponsorship()` drops any posting whose JD says
+  "no sponsorship." Keep it.
+
+This rule is **independent of field or résumé** — it survives every change below.
+
+## Onboarding a new user (do this when they ask you to "set it up")
+
+Ask for: their **field & seniority** (e.g. "new-grad software engineer", "mid-level
+mechanical engineer"), their **résumé**, and the **email address** for the digest.
+
+1. **Résumé** → save it at `assets/resume.pdf` (or paste text into `assets/resume.txt`).
+   `fit_ranker` reads this automatically, so ranking adapts to whoever's résumé it is — no
+   code change needed for a different *person*.
+2. **Profile & keys** → fill `.env` (copy from `.env.example`). Point them to
+   `docs/SETUP.md` for where each value comes from. Minimum for the daily board+email:
+   `GEMINI_API_KEY` (free ranking), `SENDER_EMAIL` + `GMAIL_APP_PASSWORD`, `DIGEST_TO`,
+   `YOUR_NAME`, and either `ANTHROPIC_API_KEY` or `GEMINI_API_KEY`. Prospeo + Sheets keys
+   are only needed for the outreach half.
+3. **Field switch (only if NOT software engineering)** — the pipeline pulls SWE titles by
+   default. To target another field, edit these and nothing else:
+   - `src/ats.py` → `_POSITIVE` (role-title keywords to KEEP, e.g. for a data analyst:
+     `"data analyst"`, `"business analyst"`, `"analytics"`), `_JUNIOR`/`_SENIOR` (seniority
+     words), and `_NONSOFTWARE` (titles to REJECT). **Do not touch `is_us()` or the
+     sponsorship logic** — those are field-independent.
+   - Display strings "Fresh SWE roles" / "SWE role": `src/jobs_site.py` (`<title>` + `<h1>`)
+     and `src/daily_job_email.py` (subject line + empty-state text). Rename to the field.
+   - Optionally `config.JOB_SEARCH_TERMS` (used by the outreach-side aggregator).
+   After editing, run a dry run (below) to confirm roles still come through.
+4. **Personalize outreach** — `docs/AGENT.md` holds the *current* owner's background and
+   email preferences. Rewrite it for the new user (school, employer, location, tone) before
+   they use the cold-email half.
+5. **Automate** — daily runs happen in GitHub Actions. Have them add the `.env` values as
+   **repo Secrets** (table in `docs/SETUP.md` §7) and enable **Pages → `main` / `/docs`**.
+   The site publishes to `their-github-username.github.io/<repo>`.
+
+## Running it (translate these to the user; they just talk to you)
+
+- **Preview the daily run (no email):** `python src/daily_workflow.py --to <email> --dry-run`
+- **Full daily run:** `python src/daily_workflow.py --to <email>` (site + top-10 email)
+- **Rebuild just the site:** `python src/jobs_site.py --open`
+- **Cold outreach for a company (preview):**
+  `python src/outreach.py --company <domain> --title "<role>" --jd jd.txt --max 5`
+  (add `--send` only after the user approves the drafts)
+- The GitHub Action `.github/workflows/daily.yml` runs the full daily loop at 8 AM ET.
+
+## Guardrails (enforce these)
+
+- **Never send outreach without showing the drafts and getting an explicit "send."**
+  The daily digest goes only to the user's own inbox; cold emails go to real recruiters.
+- **Never weaken the H-1B-sponsor filter** (see the rule above).
+- **Never commit secrets.** `.env`, `assets/*.json`, and `assets/resume.pdf` are gitignored;
+  in CI they come from GitHub Secrets. `data/h1b_employers.db` IS committed on purpose
+  (public USCIS data + which job IDs were already emailed) — keep committing it so the
+  Action's dedup state persists.
+- **Ranking is free by default** (Gemini free tier, keyword fallback). Don't switch it to
+  the paid Claude ranker without telling the user it costs money.
+
+## File map
+
+`src/daily_workflow.py` is THE daily entry point. It uses `h1b_greenhouse.py` (which uses
+`h1b_db.py` + `ats.py`) to fetch sponsor-board roles, `fit_ranker.py` to score them,
+`jobs_site.py` to build the site, and `daily_job_email.py` to email the top 10.
+The cold-outreach half is `outreach.py` / `outreach_server.py` with `prospeo_lookup.py`,
+`email_generator.py`, `gmail_sender.py`, `sheets_logger.py`. Secrets/config: `config.py`.

@@ -146,20 +146,12 @@ python src/outreach.py --company <domain> --title "<job title>" [--jd jd.txt] [-
   `--allow-unverified` to override.
 - De-duplicates by recipient — won't email the same person twice.
 
-### 2. LangGraph workflow — `src/graph_workflow.py`
-The same pipeline as a graph, with a real human-in-the-loop `interrupt()` at the review step.
+### 2. Review server — `src/outreach_server.py`
+A local web page (http://127.0.0.1:8770) behind the digest's "Email recruiters" button:
+paste recruiter names, pick the company's email pattern, preview AI-drafted emails, and
+send + log — nothing goes out until you click Send.
 ```bash
-python src/graph_workflow.py --company stripe.com --title "Software Engineer" --max 5         # preview
-python src/graph_workflow.py --company stripe.com --title "Software Engineer" --max 5 --send  # approve + send
-```
-`find_recruiters → generate_emails → human_review (interrupt) → send_and_log`
-
-### 3. Batch discovery — `src/main.py` (optional)
-Auto-discovers fresh H1B-sponsoring entry-level jobs (LinkedIn/Indeed scraping) and runs the
-pipeline across them.
-```bash
-python src/main.py --dry-run --max 5     # preview
-python src/main.py --max 5               # send
+python src/outreach_server.py
 ```
 
 ---
@@ -193,12 +185,9 @@ h1b-job-agent/
     ├── fit_ranker.py      ← sponsorship gate + Gemini(free)/Claude fit ranking
     ├── jobs_site.py       ← generates the public site (docs/index.html)
     ├── daily_job_email.py ← builds + emails the HTML digest
-    ├── outreach_server.py ← local review server behind the digest's outreach button
-    │   # ── Cold outreach ──
+    │   # ── Cold outreach (interactive) ──
     ├── outreach.py        ← targeted, human-in-the-loop CLI  (start here)
-    ├── graph_workflow.py  ← LangGraph version of the pipeline
-    ├── main.py            ← batch job-discovery pipeline
-    ├── job_discovery.py   ← LinkedIn/Indeed scraping + H1B filtering
+    ├── outreach_server.py ← local review server behind the digest's outreach button
     ├── prospeo_lookup.py  ← recruiter search + verified-email reveal
     ├── email_generator.py ← Claude-written tailored emails
     ├── gmail_sender.py    ← Gmail send: SMTP app-password or OAuth + attachments

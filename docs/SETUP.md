@@ -17,14 +17,19 @@ Open `.env` in any editor and fill it in as you complete each step.
 
 ---
 
-## 1. Anthropic API key (Claude — writes outreach emails; ranking fallback)
+## 1. Gemini API key (free — writes outreach emails + ranks daily fit)
 
-1. Go to https://console.anthropic.com → **API Keys** → **Create Key**
-2. Copy the key (starts with `sk-ant-...`)
+Gemini is the project's only LLM, and it's on Google's **free tier**.
+
+1. Go to https://aistudio.google.com → **Get API key** → **Create API key**
+2. Copy the key
 3. In `.env`:
    ```
-   ANTHROPIC_API_KEY=sk-ant-...
+   GEMINI_API_KEY=...
    ```
+
+> Without a key the tool still runs — ranking falls back to a free keyword
+> scorer and cold emails use a plain template — but the key is worth it and free.
 
 ---
 
@@ -98,23 +103,10 @@ On the **first send**, a browser opens for one-time consent; a token is then cac
 
 The header row and worksheet are created automatically on first log.
 
----
-
-## 4b. Google Gemini key (optional — makes daily fit-ranking FREE)
-
-The daily digest scores roles against your résumé with an LLM. Without this key it uses
-the (paid) Claude API (~$0.35/run at 150 roles). With it, ranking runs on Gemini's free
-tier instead — $0.
-
-1. Go to https://aistudio.google.com → **Get API key** → **Create API key**
-2. In `.env`:
-   ```
-   GEMINI_API_KEY=...
-   ```
-
-Calls are throttled to the free tier's rate limits automatically (~150 roles ≈ 12 min).
-If Gemini errors mid-run, affected roles are left unscored — it never silently falls
-back to spending Claude credits. Remove the key to revert to Claude.
+> **On the daily fit-ranking:** it scores roles with Gemini (step 1), throttled to the
+> free tier's rate limits automatically (~150 roles ≈ 12 min). When the daily quota is
+> spent, remaining roles fall back to a free keyword scorer — so ranking always completes
+> at $0.
 
 ---
 
@@ -158,10 +150,9 @@ and email the top 10. To set it up on a fork, add these **repository Secrets**
 
 | Secret | Value |
 |---|---|
-| `ANTHROPIC_API_KEY` | from step 1 |
+| `GEMINI_API_KEY` | from step 1 (free — ranking + email writing) |
 | `PROSPEO_API_KEY` | from step 2 |
 | `GMAIL_APP_PASSWORD` | from step 3 Path A (required — the runner has no browser for OAuth) |
-| `GEMINI_API_KEY` | from step 4b (optional but recommended — free ranking) |
 | `SENDER_EMAIL` | your Gmail address |
 | `SHEETS_SPREADSHEET_ID` | from step 4 |
 | `DIGEST_TO` | the address that receives the daily top-10 email |

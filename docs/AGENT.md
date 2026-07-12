@@ -65,7 +65,7 @@ tailored emails referencing the user's resume, get approval, send, and log.
      don't email someone on the wrong team.
 
 **d. Draft a tailored email per person.**
-   - Use `src/email_generator.py` (Claude) or write it directly. Keep it ~100–120 words.
+   - Use `src/email_generator.py` (Gemini) or write it directly. Keep it ~100–120 words.
    - Tie the user's resume specifics to the JD (e.g. messaging-app project ↔ messaging role,
      LangGraph/AI agent work ↔ AI roles, GCP/FastAPI ↔ backend/cloud roles).
    - Lead with **UC Berkeley CS** + **Genuine Parts Company (Fortune 200)**.

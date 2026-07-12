@@ -4,15 +4,17 @@
 #  The one daily entry point (GitHub Actions or launchd/cron):
 #
 #    1. Fetch all current roles (Workday + Greenhouse/Lever/Ashby)
-#    2. Drop roles already emailed in past digests
-#    3. Rank the freshest by resume fit (Gemini free tier / Claude)
-#       + sponsorship gate, then email the TOP 10 and mark them
-#    4. Regenerate the public website with ALL roles — the fit
-#       scores just computed ride along ("Best fit" sort + chips)
+#    2. Score once (score_daily): postings first seen TODAY are scored
+#       from their full JD (years-of-experience aware) and persisted;
+#       older roles reuse their stored score — no daily re-scan of the
+#       whole ~800-role pool. Both outputs below share these scores.
+#    3. Email the TOP 10 unemailed roles by fit (+ sponsorship gate),
+#       mark them so they don't repeat
+#    4. Regenerate the public website with ALL roles + their scores
 #
 #  The email step and the site step are isolated: a failure in one
-#  never blocks the other (ranking runs first so the site can show
-#  scores, but the site is written regardless of email outcome).
+#  never blocks the other (scoring runs first so both can use it, but
+#  the site is written regardless of email outcome).
 #
 #  Usage:
 #    python src/daily_workflow.py --to you@example.com
@@ -67,31 +69,25 @@ def rebuild_site(jobs: list[dict]) -> bool:
         return False
 
 
-def email_top10(jobs: list[dict], to_email: str, rank_limit: int,
-                dry_run: bool) -> bool:
-    """Rank unemailed roles, send the top 10, mark them. Returns success."""
+def email_top10(jobs: list[dict], to_email: str, dry_run: bool) -> bool:
+    """Email the 10 best-fit unemailed roles by their persisted score, and mark
+    them. Scores come from score_daily (JD-based for new postings); the
+    sponsorship gate drops roles whose JD says 'no sponsorship'. Returns success."""
     try:
         fresh = hg.filter_unemailed(jobs)
         print(f"  {len(jobs) - len(fresh)} roles already emailed before — skipped; "
               f"{len(fresh)} candidates")
-        if not fresh:
+        eligible = [j for j in fresh if not j.get("no_sponsorship")]
+        eligible.sort(key=lambda j: j.get("fit_score", 0), reverse=True)
+        top10 = eligible[:10]
+        if not top10:
             print("  Nothing new to email today.")
             return True
 
-        # Rank only the freshest slice (list is new-grad-first, newest-first)
-        # to bound Claude cost + JD fetches.
-        n_rank = min(len(fresh), rank_limit)
-        print(f"  Ranking {n_rank} roles by resume fit …")
-        ranked = fit_ranker.enrich(fresh, limit=n_rank, drop_no_sponsorship=True)
-        scored = [j for j in ranked if isinstance(j.get("fit_score"), int) and j["fit_score"] >= 0]
-        # scored roles first (best fit), padded with unscored (newest) to 10
-        seen_ids = set(map(id, scored))
-        top10 = (scored + [j for j in ranked if id(j) not in seen_ids])[:10]
-
-        print(f"  Top {len(top10)}:")
+        print(f"  Top {len(top10)} by fit:")
         for j in top10:
             print(f"    {j.get('fit_score', '?'):>3}  [{j['ats']}:{j['company']}]  "
-                  f"{j['title']} — {j['location']}")
+                  f"{j['title']} — {j.get('location', '')}")
 
         if dry_run:
             print("  (dry-run — no email sent, nothing marked as emailed)")
@@ -110,9 +106,6 @@ def main() -> None:
     ap = argparse.ArgumentParser(
         description="Daily run: rebuild the site with all roles + email the top-10 by fit")
     ap.add_argument("--to", required=True, help="recipient email for the top-10 digest")
-    ap.add_argument("--rank-limit", type=int, default=120,
-                    help="max roles to score per run (default 120 — leaves headroom "
-                         "under Gemini's real free-tier daily quota, ~150/model)")
     ap.add_argument("--dry-run", action="store_true",
                     help="write the site but don't send email or mark roles")
     args = ap.parse_args()
@@ -126,9 +119,12 @@ def main() -> None:
         sys.exit(1)
     print(f"  Fetched {len(jobs)} roles from the boards")
 
-    # rank + email FIRST — fit scores land on the shared job dicts, so the
-    # site build below picks them up for the "Best fit" sort
-    email_ok = email_top10(jobs, args.to, args.rank_limit, args.dry_run)
+    # Score once, shared by both outputs: NEW postings today are scored from
+    # their full JD (years-of-experience aware) and persisted; older roles reuse
+    # their stored score. The site build and the email both read these.
+    jobs = fit_ranker.score_daily(jobs)
+
+    email_ok = email_top10(jobs, args.to, args.dry_run)
     site_ok = rebuild_site(jobs)
 
     if site_ok and email_ok:

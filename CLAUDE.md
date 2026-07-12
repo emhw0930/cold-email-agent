@@ -35,9 +35,9 @@ mechanical engineer"), their **résumé**, and the **email address** for the dig
    code change needed for a different *person*.
 2. **Profile & keys** → fill `.env` (copy from `.env.example`). Point them to
    `docs/SETUP.md` for where each value comes from. Minimum for the daily board+email:
-   `GEMINI_API_KEY` (free ranking), `SENDER_EMAIL` + `GMAIL_APP_PASSWORD`, `DIGEST_TO`,
-   `YOUR_NAME`, and either `ANTHROPIC_API_KEY` or `GEMINI_API_KEY`. Prospeo + Sheets keys
-   are only needed for the outreach half.
+   `GEMINI_API_KEY` (free — ranking *and* cold-email writing), `SENDER_EMAIL` +
+   `GMAIL_APP_PASSWORD`, `DIGEST_TO`, and `YOUR_NAME`. Prospeo + Sheets keys are
+   only needed for the outreach half.
 3. **Field switch (only if NOT software engineering)** — the pipeline pulls SWE titles by
    default. To target another field, edit these and nothing else:
    - `src/ats.py` → `_POSITIVE` (role-title keywords to KEEP, e.g. for a data analyst:
@@ -74,8 +74,9 @@ mechanical engineer"), their **résumé**, and the **email address** for the dig
   in CI they come from GitHub Secrets. `data/h1b_employers.db` IS committed on purpose
   (public USCIS data + which job IDs were already emailed) — keep committing it so the
   Action's dedup state persists.
-- **Ranking is free by default** (Gemini free tier, keyword fallback). Don't switch it to
-  the paid Claude ranker without telling the user it costs money.
+- **The LLM is free by default** (Gemini free tier). Ranking falls back to a keyword
+  scorer and outreach to a plain template when the quota is spent — both stay at $0.
+  Don't wire in a paid API without telling the user it costs money.
 
 ## File map
 

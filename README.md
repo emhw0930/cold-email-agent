@@ -21,7 +21,7 @@ Two tools, one shared pipeline:
 ```
 Daily board:  H-1B sponsor DB → their job boards → fresh in-field roles → rank vs. résumé → email top 10
                (USCIS data)      (Greenhouse/Lever/                        (Gemini free tier,
-                                  Ashby/Workday)                            or Claude)
+                                  Ashby/Workday)                            keyword fallback)
 ```
 
 Everything is **human-in-the-loop** (no cold email sends without your OK) and **free to
@@ -100,15 +100,14 @@ publishes them all to the public site, and emails you the top 10 by résumé fit
    `data/h1b_employers.db`, committed back after each run)
 4. Rank the freshest 150 against the résumé + drop "no sponsorship" JDs —
    **free via Gemini** (`gemini-2.5-flash-lite`, throttled to the free tier's
-   rate limits) when `GEMINI_API_KEY` is set, else Claude Haiku (~$0.35/run)
+   rate limits); when the daily quota is spent it falls back to the free
+   keyword scorer so every role is still scored
 5. Email the **top 10** (via Gmail SMTP app password) and mark them sent
 
-Required repo secrets: `ANTHROPIC_API_KEY`, `PROSPEO_API_KEY`, `SENDER_EMAIL`,
-`GMAIL_APP_PASSWORD` (myaccount.google.com → Security → App passwords),
-`SHEETS_SPREADSHEET_ID`, `DIGEST_TO`, `RESUME_TEXT`, `YOUR_NAME`.
-Optional: `GEMINI_API_KEY` (aistudio.google.com) — when set, fit-ranking runs on
-Gemini's free tier (`gemini-2.5-flash-lite`) instead of the paid Claude API.
-Trigger a run manually from the Actions tab (`workflow_dispatch`) to test.
+Required repo secrets: `GEMINI_API_KEY` (aistudio.google.com — free),
+`PROSPEO_API_KEY`, `SENDER_EMAIL`, `GMAIL_APP_PASSWORD` (myaccount.google.com →
+Security → App passwords), `SHEETS_SPREADSHEET_ID`, `DIGEST_TO`, `RESUME_TEXT`,
+`YOUR_NAME`. Trigger a run manually from the Actions tab (`workflow_dispatch`) to test.
 
 ### Run it yourself
 
@@ -138,8 +137,8 @@ How it's built:
   Cached board list lives in `data/h1b_sponsors.json`.
 - **`fit_ranker.py`** drops roles whose JD explicitly says "no sponsorship" (free regex),
   then scores each role 0–100 against your résumé with a one-line reason — via Gemini's
-  free tier when `GEMINI_API_KEY` is set, else Claude. A Gemini failure leaves roles
-  unscored rather than silently spending Claude credits.
+  free tier (`gemini.py`). When the quota is spent it falls back to a free deterministic
+  keyword scorer, so ranking always completes at $0.
 - **`jobs_site.py`** generates the public site ([docs/index.html](docs/index.html)) —
   a single self-contained page with client-side search, source filters, a new-grad
   toggle, and sort, in a dark glassmorphism design. GitHub Pages serves it from `docs/`.
@@ -201,14 +200,15 @@ h1b-job-agent/
     ├── h1b_db.py          ← USCIS H-1B CSV → SQLite, ranked by new approvals
     ├── ats.py             ← Greenhouse/Lever/Ashby/Workday/Amazon board readers
     ├── h1b_greenhouse.py  ← board resolver, fresh-role puller, emailed-dedup
-    ├── fit_ranker.py      ← sponsorship gate + Gemini(free)/Claude fit ranking
+    ├── fit_ranker.py      ← sponsorship gate + Gemini(free) fit ranking, keyword fallback
+    ├── gemini.py          ← shared free-tier Gemini client (ranking + email writing)
     ├── jobs_site.py       ← generates the public site (docs/index.html)
     ├── daily_job_email.py ← builds + emails the HTML digest
     │   # ── Cold outreach (interactive) ──
     ├── outreach.py        ← targeted, human-in-the-loop CLI  (start here)
     ├── outreach_server.py ← local review server behind the digest's outreach button
     ├── prospeo_lookup.py  ← recruiter search + verified-email reveal
-    ├── email_generator.py ← Claude-written tailored emails
+    ├── email_generator.py ← Gemini-written tailored emails (template fallback)
     ├── gmail_sender.py    ← Gmail send: SMTP app-password or OAuth + attachments
     └── sheets_logger.py   ← Google Sheets logging + dedup
 ```
@@ -221,16 +221,14 @@ Everything lives in `.env` (loaded by `src/config.py`); see `.env.example` for t
 
 | Variable | What it is |
 |----------|-----------|
-| `ANTHROPIC_API_KEY` | Claude API key (writes outreach emails; ranking fallback) |
-| `GEMINI_API_KEY` | *Optional* — Google AI Studio key; makes daily fit-ranking **free** (Gemini free tier) |
+| `GEMINI_API_KEY` | Google AI Studio key — the only LLM (free tier). Writes outreach emails **and** ranks daily fit. Without it, ranking uses the keyword scorer and outreach uses a template |
 | `GMAIL_APP_PASSWORD` | *Optional* — Gmail App Password; sends via SMTP (headless, used by the Action). Unset = browser OAuth |
 | `PROSPEO_API_KEY` | Prospeo key (recruiter email lookup) |
 | `SENDER_EMAIL` | Gmail address you send from |
 | `SHEETS_SPREADSHEET_ID` | Target Google Sheet ID |
 | `YOUR_NAME` / `YOUR_PHONE` / `YOUR_LINKEDIN` | Signature fields |
 | `YOUR_EMAIL_PRIMARY` / `YOUR_EMAIL_ALT` | Emails shown in the signature |
-| `EMAIL_MODEL` | Claude model for outreach generation (default `claude-haiku-4-5`) |
-| `GEMINI_MODEL` | Gemini model for ranking (default `gemini-2.5-flash-lite`) |
+| `GEMINI_MODEL` | Gemini model for ranking + emails (default `gemini-2.5-flash-lite`) |
 | `VERIFIED_ONLY` | `true` (default) = only send to Prospeo-verified emails |
 | `DRY_RUN` | `true` = never actually send |
 
@@ -265,7 +263,7 @@ crontab -e
 - Gmail: the OAuth path is scoped **send-only**; the app-password path is a separate
   16-char credential you can revoke anytime at myaccount.google.com without touching
   your real password.
-- If a key is ever exposed, rotate it immediately (Anthropic / Google / Prospeo consoles).
+- If a key is ever exposed, rotate it immediately (Google AI Studio / Prospeo consoles).
 
 ---
 

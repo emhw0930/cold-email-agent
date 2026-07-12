@@ -134,25 +134,27 @@ def _job_card(j: dict) -> str:
     </div>"""
 
 
-def _cards_grid(jobs: list[dict], per_row: int = 2) -> str:
-    """Lay cards out `per_row` across, each cell 100/per_row percent wide."""
+def _cards_grid(jobs: list[dict], per_row: int = 4) -> str:
+    """Lay cards out as fluid inline-block cells that WRAP to the screen width:
+    up to `per_row` across on a wide screen, collapsing to 2 then 1 across as the
+    screen narrows. Using inline-block (not fixed-width table cells) means the
+    cards reflow on a phone even in clients that ignore media queries, e.g. the
+    Gmail mobile app — which is why the old fixed 25%-wide cells looked cramped."""
     if not jobs:
         return ('<tr><td style="padding:28px;text-align:center;color:#80868b;'
                 'border:1px dashed #dadce0;border-radius:12px">'
                 'No explicit new-grad SWE roles today. New postings surge in the fall cycle.'
                 '</td></tr>')
-    width = f"{100 // per_row}%"
-    rows = []
-    for i in range(0, len(jobs), per_row):
-        chunk = jobs[i:i + per_row]
-        cells = "".join(
-            f'<td width="{width}" valign="top" style="padding:6px">{_job_card(j)}</td>'
-            for j in chunk)
-        # pad short final row so widths stay even
-        for _ in range(per_row - len(chunk)):
-            cells += f'<td width="{width}" style="padding:6px"></td>'
-        rows.append(f"<tr>{cells}</tr>")
-    return "".join(rows)
+    max_w = max(240, 1200 // max(per_row, 1))   # ~300px per card at per_row=4
+    cells = "".join(
+        f'<div class="jcell" style="display:inline-block;width:100%;max-width:{max_w}px;'
+        f'vertical-align:top;padding:6px;box-sizing:border-box;font-size:14px">'
+        f'{_job_card(j)}</div>'
+        for j in jobs)
+    # font-size:0 / line-height:0 on the wrapper collapses the whitespace gaps
+    # between inline-block cards; each .jcell resets its own font size.
+    return (f'<tr><td align="center" style="font-size:0;line-height:0;padding:0">'
+            f'{cells}</td></tr>')
 
 
 def build_html(jobs: list[dict]) -> str:
@@ -191,7 +193,23 @@ def build_html(jobs: list[dict]) -> str:
                 f'font-size:12px;font-weight:600;padding:4px 12px;border-radius:20px;'
                 f'margin-left:8px">{n_new} new</span>' if n_new else "")
 
-    return f"""<div style="margin:0;padding:24px 12px;background:#ffffff;
+    return f"""<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light only">
+<style>
+  /* Backup for clients that honor media queries (Gmail web + app, Apple Mail):
+     on phones give each card a full-width row and tighten the side padding. */
+  @media only screen and (max-width:600px) {{
+    .jcell {{ max-width:100% !important; }}
+    .wrap-pad {{ padding-left:8px !important; padding-right:8px !important; }}
+    .hdr-title {{ font-size:20px !important; }}
+  }}
+</style>
+</head>
+<body style="margin:0;padding:0;background:#ffffff">
+    <div class="wrap-pad" style="margin:0;padding:24px 12px;background:#ffffff;
                 font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
         <tr><td align="center">
@@ -199,7 +217,7 @@ def build_html(jobs: list[dict]) -> str:
 
             <!-- Header -->
             <tr><td style="padding:4px 6px 16px 6px">
-              <div style="font-size:22px;font-weight:750;color:#202124;letter-spacing:-.01em">Fresh SWE roles</div>
+              <div class="hdr-title" style="font-size:22px;font-weight:750;color:#202124;letter-spacing:-.01em">Fresh SWE roles</div>
               <div style="font-size:13px;color:#5f6368;margin-top:4px">{today}</div>
               <div style="margin-top:12px">
                 <span style="display:inline-block;background:#eef1f4;color:#3c4043;
@@ -233,7 +251,8 @@ def build_html(jobs: list[dict]) -> str:
           </table>
         </td></tr>
       </table>
-    </div>"""
+    </div>
+</body></html>"""
 
 
 def send_digest(to_email: str, jobs: list[dict]) -> None:
@@ -253,9 +272,9 @@ def main():
     ap.add_argument("--new-only", action="store_true",
                     help="only include roles first seen today")
     ap.add_argument("--rank", action="store_true",
-                    help="score fit with Claude + drop no-sponsorship roles, sort by fit")
+                    help="score fit with Gemini + drop no-sponsorship roles, sort by fit")
     ap.add_argument("--rank-limit", type=int, default=40,
-                    help="max roles to score with Claude (cost bound)")
+                    help="max roles to score with Gemini (quota bound)")
     ap.add_argument("--dry-run", action="store_true", help="print instead of emailing")
     args = ap.parse_args()
 

@@ -27,23 +27,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import anthropic
 import ats
 import config
+import gemini
 import gmail_sender
 import sheets_logger
 
 PORT = 8770
 GREET = "FIRSTNAME"  # placeholder replaced per-recipient at send time
-
-_client: anthropic.Anthropic | None = None
-
-
-def _cl() -> anthropic.Anthropic:
-    global _client
-    if _client is None:
-        _client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
-    return _client
 
 
 def _signature() -> str:
@@ -64,19 +55,23 @@ def _draft(company: str, title: str) -> tuple[str, str]:
         f"Candidate: {config.YOUR_NAME} — {config.YOUR_BIO}. Lead with UC Berkeley CS and "
         f"current experience; tie skills to the role. Applying to: {title} at {company}.\n"
         f"Start the body EXACTLY with 'Hi {GREET},' and do NOT include a signature.\n"
+        f"NEVER mention H1B, visa status, work authorization, or sponsorship.\n"
         f'Return compact JSON: {{"subject": "...", "body": "..."}} — subject under 90 chars, '
         f"professional, no buzzwords, no 'I hope this finds you well'."
     )
     try:
         import json, re
-        resp = _cl().messages.create(model=config.EMAIL_MODEL, max_tokens=500,
-                                     messages=[{"role": "user", "content": prompt}])
-        m = re.search(r"\{.*\}", resp.content[0].text, re.S)
+        text = gemini.generate(prompt, max_output_tokens=800, temperature=0.6)
+        m = re.search(r"\{.*\}", text, re.S)
         d = json.loads(m.group(0))
         return d.get("subject", f"{title} — {config.YOUR_NAME}"), d.get("body", "")
     except Exception as e:
+        # Gemini unavailable (no key / quota) or bad JSON — plain fallback draft.
         return (f"{title} at {company} — {config.YOUR_NAME}",
-                f"Hi {GREET},\n\n(Draft generation failed: {e})\n\n")
+                f"Hi {GREET},\n\nI'm reaching out about the {title} role at {company}. "
+                f"I'm {config.YOUR_BIO}, and the role looks like a strong match for my "
+                f"experience. Would you be open to a quick call to see if I'd be a good "
+                f"fit?\n\n")
 
 
 def _guess_domain(company: str) -> str:

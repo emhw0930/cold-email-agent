@@ -1,6 +1,5 @@
 # Core
 python-jobspy>=1.1.4
-anthropic>=0.40.0
 requests>=2.31.0
 
 # Google (Gmail + Sheets)

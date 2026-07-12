@@ -5,7 +5,7 @@
 #  Workflow for a company you applied to:
 #    1. Find US-based recruiters at the company (Prospeo)
 #    2. Reveal verified emails (skips stale/unverifiable to avoid bounces)
-#    3. Generate a tailored email per recruiter (Claude)
+#    3. Generate a tailored email per recruiter (Gemini)
 #    4. Preview (default) — review before sending
 #    5. Send + log to Google Sheets (with recipient-based dedup)
 #

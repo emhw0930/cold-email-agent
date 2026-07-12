@@ -40,12 +40,12 @@ def _optional(name: str, default: str = "") -> str:
 
 
 # ── Secrets (from .env) ───────────────────────────────────────
-ANTHROPIC_API_KEY = _require("ANTHROPIC_API_KEY")
 PROSPEO_API_KEY = _require("PROSPEO_API_KEY")
 
-# Optional: Google Gemini key (aistudio.google.com). When set, the daily
-# fit-ranking scores via Gemini's FREE tier instead of the (paid) Claude API.
-# Claude remains the ranker when this is unset.
+# Google Gemini key (aistudio.google.com) — the project's only LLM, on the
+# FREE tier. Powers both the daily fit-ranking and the cold-email writer.
+# Strongly recommended, but optional: without it, ranking falls back to the
+# free deterministic keyword scorer and outreach uses a plain template.
 GEMINI_API_KEY = _optional("GEMINI_API_KEY")
 GEMINI_MODEL = _optional("GEMINI_MODEL", "gemini-2.5-flash-lite")
 
@@ -85,8 +85,8 @@ JOB_SEARCH_TERMS = [
 JOB_LOCATIONS = ["United States"]
 
 # ── Email Settings ───────────────────────────────────────────
-# Model used for email generation (bulk → Haiku by default; override in .env)
-EMAIL_MODEL = _optional("EMAIL_MODEL", "claude-haiku-4-5")
+# Cold emails are written by Gemini (see GEMINI_MODEL above); no separate
+# model setting is needed.
 EMAIL_SEND_DELAY_SECONDS = int(_optional("EMAIL_SEND_DELAY_SECONDS", "5"))
 DRY_RUN = _optional("DRY_RUN", "false").lower() in ("1", "true", "yes")
 # Only send to Prospeo-VERIFIED emails (avoids bounces from stale/guessed addresses)

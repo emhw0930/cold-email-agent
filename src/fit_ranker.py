@@ -4,8 +4,9 @@
 #    1. Sponsorship gate — drop postings whose JD text explicitly
 #       says no visa sponsorship (a company can be an H-1B sponsor
 #       yet still say "no sponsorship" on a specific role).
-#    2. Fit ranking — ask Claude to score each role 0-100 against
-#       the user's resume, with a one-line reason, and sort by it.
+#    2. Fit ranking — ask Gemini (free tier) to score each role
+#       0-100 against the user's resume, with a one-line reason,
+#       and sort by it. Falls back to a free keyword scorer.
 #
 #  Both need the JD text, fetched on demand via ats.description().
 #  Ranking is LLM-cost-bearing, so it's applied to the (small)
@@ -20,16 +21,13 @@ from __future__ import annotations
 import concurrent.futures as cf
 import json
 import re
-import threading
-import time
 from functools import lru_cache
 from pathlib import Path
 
-import anthropic
-import requests
-
 import ats
 import config
+import gemini
+import h1b_db
 
 # ── Sponsorship gate ─────────────────────────────────────────
 # Phrases that mean "we will NOT sponsor". Kept specific to avoid
@@ -107,8 +105,33 @@ def _resume_skills() -> frozenset[str]:
     return frozenset(s for s in _SKILLS if s in r)
 
 
+# The candidate is early-career (~1-2 yrs). A role demanding materially more
+# experience is a poor fit even if the title looks junior — but the "N+ years"
+# requirement lives in the JD body, so this only fires when a JD is provided.
+def _years_required(jd: str) -> int | None:
+    """Largest 'years of experience' the JD demands, if it states one. Matches
+    '5+ years', '3-5 years', 'at least 5 years', 'minimum of 5 years', etc., but
+    only when 'experience' appears nearby (avoids 'founded 5 years ago')."""
+    if not jd:
+        return None
+    low = jd.lower()
+    best = None
+    for m in re.finditer(r'(\d{1,2})\s*(?:\+|\-\s*\d{1,2}|to\s*\d{1,2}|–\s*\d{1,2})?\s*'
+                         r'(?:\+\s*)?(?:years?|yrs?)', low):
+        window = low[max(0, m.start() - 30):m.end() + 60]
+        if "experien" not in window:
+            continue
+        n = int(m.group(1))
+        if 1 <= n <= 15:
+            best = n if best is None else max(best, n)
+    return best
+
+
 def keyword_fit(title: str, company: str = "", jd: str = "") -> tuple[int, str]:
-    """Deterministic 0-100 résumé-fit score from title (+JD if given). Free."""
+    """Deterministic 0-100 résumé-fit score from title (+JD if given). Free.
+
+    When a JD is supplied, an over-seniority penalty is applied for roles that
+    demand more years of experience than an early-career candidate has."""
     t = f" {title.lower()} "
     text = f"{title} {company} {jd}".lower()
     score, hits = 52, []  # base for a junior SWE role that already passed filters
@@ -129,6 +152,12 @@ def keyword_fit(title: str, company: str = "", jd: str = "") -> tuple[int, str]:
     if any(o in t for o in _OFFFIT):
         score -= 24; hits.append("off-stack")
 
+    # years-of-experience gate (JD only): 3y −6, 4y −14, 5y+ −24
+    req = _years_required(jd)
+    if req is not None and req >= 3:
+        score -= 6 if req == 3 else 14 if req == 4 else 24
+        hits.append(f"{req}+ yrs req")
+
     score = max(5, min(96, score))
     reason = "keyword: " + (", ".join(dict.fromkeys(hits)) if hits else "generic SWE role")
     return score, reason[:80]
@@ -143,20 +172,7 @@ def ensure_scored(job: dict) -> dict:
     return job
 
 
-# ── Fit scoring via Claude ───────────────────────────────────
-_client: anthropic.Anthropic | None = None
-
-
-def _get_client() -> anthropic.Anthropic:
-    global _client
-    if _client is None:
-        _client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
-    return _client
-
-
-_SCORE_MODEL = "claude-haiku-4-5"  # cheap + fast; scoring is a simple judgement
-
-
+# ── Fit scoring via Gemini (free tier) ───────────────────────
 def _prompt(title: str, company: str, jd: str, resume: str) -> str:
     return (
         "You are screening software-engineering jobs for a candidate. Score how good a "
@@ -181,95 +197,112 @@ def _parse_score(text: str) -> tuple[int, str]:
     return max(0, min(100, score)), str(data.get("reason", ""))[:80]
 
 
-# ── Gemini free-tier throttle + model fallback ───────────────
-# Free-tier quotas are PER MODEL and much smaller than advertised
-# (empirically ~150-160 requests/day for flash-lite). We space calls
-# ~4.5s apart for the RPM limit, and keep a fallback chain of models:
-# when one model's DAILY quota is exhausted (429 with a PerDay quotaId),
-# it's taken out of rotation for the rest of the run and the next
-# model's separate daily bucket is used instead.
-_GEMINI_MODELS = list(dict.fromkeys([config.GEMINI_MODEL, "gemini-2.5-flash"]))
-_gemini_dead: set[str] = set()   # models whose daily quota is gone (this run)
-_gemini_lock = threading.Lock()
-_gemini_next_ok = 0.0
-_GEMINI_SPACING = 4.5  # seconds between calls
-
-
-def _gemini_throttle() -> None:
-    global _gemini_next_ok
-    with _gemini_lock:
-        wait = _gemini_next_ok - time.monotonic()
-        if wait > 0:
-            time.sleep(wait)
-        _gemini_next_ok = time.monotonic() + _GEMINI_SPACING
-
-
-def _quota_is_daily(resp) -> bool:
-    try:
-        for d in resp.json().get("error", {}).get("details", []):
-            for v in d.get("violations", []):
-                if "PerDay" in v.get("quotaId", ""):
-                    return True
-    except Exception:
-        pass
-    return False
-
-
-def _score_one_gemini(title: str, company: str, jd: str, resume: str) -> tuple[int, str]:
-    """Score via Google Gemini (free tier), falling through the model chain."""
-    body = {
-        "contents": [{"parts": [{"text": _prompt(title, company, jd, resume)}]}],
-        # thinkingBudget 0 disables 2.5-family "thinking", which otherwise
-        # silently consumes maxOutputTokens and truncates the JSON reply
-        "generationConfig": {"maxOutputTokens": 500, "temperature": 0.1,
-                             "thinkingConfig": {"thinkingBudget": 0}},
-    }
-    for model in _GEMINI_MODELS:
-        if model in _gemini_dead:
-            continue
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-        for attempt in (1, 2):
-            _gemini_throttle()
-            r = requests.post(url, json=body, timeout=45,
-                              headers={"x-goog-api-key": config.GEMINI_API_KEY,
-                                       "Content-Type": "application/json"})
-            if r.status_code == 429:
-                if _quota_is_daily(r):
-                    _gemini_dead.add(model)   # dead for the day — next model
-                    print(f"  ⚠ {model}: daily quota exhausted, switching model")
-                    break
-                if attempt == 1:
-                    time.sleep(25)  # per-minute window; back off and retry once
-                    continue
-                break  # persistent RPM trouble — try the next model
-            r.raise_for_status()
-            text = r.json()["candidates"][0]["content"]["parts"][0]["text"]
-            return _parse_score(text)
-    raise RuntimeError("gemini quota exhausted on all models")
-
-
-def _score_one_claude(title: str, company: str, jd: str, resume: str) -> tuple[int, str]:
-    resp = _get_client().messages.create(
-        model=_SCORE_MODEL, max_tokens=80,
-        messages=[{"role": "user", "content": _prompt(title, company, jd, resume)}],
-    )
-    return _parse_score(resp.content[0].text.strip())
-
-
 def _score_one(title: str, company: str, jd: str, resume: str) -> tuple[int, str]:
     """Return (score 0-100, one-line reason).
 
-    Provider: Gemini free tier when GEMINI_API_KEY is set, else Claude.
-    On any LLM failure (quota exhausted, error) fall back to the free
-    keyword scorer so the role is still scored — never spends Claude
-    credits when a Gemini key is present.
+    Scores via Gemini's free tier. On any failure (no key, daily quota
+    exhausted, parse error) fall back to the free deterministic keyword
+    scorer so every role is still scored — always at $0.
     """
     try:
-        if config.GEMINI_API_KEY:
-            return _score_one_gemini(title, company, jd, resume)
-        return _score_one_claude(title, company, jd, resume)
+        text = gemini.generate(_prompt(title, company, jd, resume),
+                               max_output_tokens=500)
+        return _parse_score(text)
     except Exception:
         return keyword_fit(title, company, jd)
+
+
+# ── Persisted daily scoring (JD-based, new postings only) ────
+# Scores live in the seen_jobs table so they survive across runs. Only postings
+# first seen TODAY get their full JD fetched and scored (years-of-experience
+# aware); everything older keeps the score it already had — no re-fetch.
+_SEEN_MIN_SCHEMA = (
+    "CREATE TABLE IF NOT EXISTS seen_jobs (job_key TEXT PRIMARY KEY, "
+    "first_seen TEXT, title TEXT, company TEXT, ats TEXT, url TEXT)")
+
+
+def _ensure_score_cols(conn) -> None:
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(seen_jobs)")}
+    if "fit_score" not in cols:
+        conn.execute("ALTER TABLE seen_jobs ADD COLUMN fit_score INTEGER")
+    if "fit_reason" not in cols:
+        conn.execute("ALTER TABLE seen_jobs ADD COLUMN fit_reason TEXT")
+    if "no_sponsor" not in cols:
+        conn.execute("ALTER TABLE seen_jobs ADD COLUMN no_sponsor INTEGER DEFAULT 0")
+
+
+def _seen_key(j: dict) -> str:
+    return f"{j['ats']}:{j.get('job_id')}"
+
+
+def score_daily(jobs: list[dict], db_path: str | None = None) -> list[dict]:
+    """Attach fit_score / fit_reason / no_sponsorship to every job, scoring only
+    the day's NEW postings from their full JD and persisting the result.
+
+    - Jobs first seen TODAY (is_new): fetch the full description, run the
+      sponsorship gate, score fit (Gemini when quota allows, else the free
+      years-of-experience-aware keyword scorer), and STORE it in seen_jobs.
+    - Jobs seen on an earlier day: reuse the stored score, no re-fetch.
+    - Jobs seen before but never scored (predate this feature): free title-only
+      score as a fallback (not stored, so they stay put).
+
+    Used by the daily workflow so BOTH the website and the email show the same
+    JD-based scores without re-scoring the whole ~800-role pool every day.
+    """
+    db_path = db_path or h1b_db.DB_PATH
+    resume = resume_text()
+    conn = h1b_db.connect(db_path)
+    conn.execute(_SEEN_MIN_SCHEMA)
+    _ensure_score_cols(conn)
+    stored = {r["job_key"]: (r["fit_score"], r["fit_reason"], r["no_sponsor"])
+              for r in conn.execute(
+                  "SELECT job_key, fit_score, fit_reason, no_sponsor FROM seen_jobs")}
+
+    # new postings that still need a JD-based score → fetch their JDs in parallel
+    todo = [j for j in jobs
+            if j.get("is_new") and stored.get(_seen_key(j), (None,))[0] is None]
+    if todo:
+        print(f"  Scoring {len(todo)} new posting(s) from full JD …")
+
+        def _fetch(j):
+            j["_jd"] = ats.description(j) or ""
+            return j
+        with cf.ThreadPoolExecutor(max_workers=8) as ex:
+            list(ex.map(_fetch, todo))
+
+    updates = []
+    for j in jobs:
+        k = _seen_key(j)
+        s = stored.get(k)
+        if s and s[0] is not None:                       # seen before → reuse
+            j["fit_score"], j["fit_reason"] = int(s[0]), s[1] or ""
+            j["no_sponsorship"] = bool(s[2])
+        elif j.get("is_new"):                             # new today → JD score
+            jd = j.get("_jd", "")
+            j["no_sponsorship"] = says_no_sponsorship(jd)
+            sc, reason = _score_one(j["title"], j["company"], jd, resume)
+            j["fit_score"], j["fit_reason"] = sc, reason
+            updates.append((k, j.get("first_seen", ""), j["title"], j["company"],
+                            j["ats"], j.get("url", ""), sc, reason,
+                            1 if j["no_sponsorship"] else 0))
+        else:                                             # pre-existing, unscored
+            j["fit_score"], j["fit_reason"] = keyword_fit(j["title"], j["company"])
+            j["no_sponsorship"] = False
+        j.pop("_jd", None)
+
+    if updates:
+        # upsert: the row usually already exists (_annotate_seen created it), but
+        # insert it if not so score_daily is correct even called on its own.
+        conn.executemany(
+            "INSERT INTO seen_jobs "
+            "(job_key, first_seen, title, company, ats, url, fit_score, fit_reason, no_sponsor) "
+            "VALUES (?,?,?,?,?,?,?,?,?) "
+            "ON CONFLICT(job_key) DO UPDATE SET fit_score=excluded.fit_score, "
+            "fit_reason=excluded.fit_reason, no_sponsor=excluded.no_sponsor",
+            updates)
+        conn.commit()
+    conn.close()
+    return jobs
 
 
 def enrich(jobs: list[dict], limit: int = 40, drop_no_sponsorship: bool = True) -> list[dict]:

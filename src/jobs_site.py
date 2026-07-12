@@ -430,8 +430,8 @@ render();
 (() => {
   const box = el('coq'), out = el('coResults');
   let DATA = null, loading = false;
-  const SUF = /\b(INC|LLC|LLP|LP|LTD|CORP|CORPORATION|CO|COMPANY|PC|PLLC|THE|USA|US|NA|NORTH AMERICA)\b/g;
-  const norm = s => (s||'').toUpperCase().replace(/[^A-Z0-9& ]/g,' ').replace(SUF,' ').replace(/\s+/g,' ').trim();
+  const SUF = /\\b(INC|LLC|LLP|LP|LTD|CORP|CORPORATION|CO|COMPANY|PC|PLLC|THE|USA|US|NA|NORTH AMERICA)\\b/g;
+  const norm = s => (s||'').toUpperCase().replace(/[^A-Z0-9& ]/g,' ').replace(SUF,' ').replace(/\\s+/g,' ').trim();
   const money = n => '$' + Math.round(n).toLocaleString();
   const kk = n => '$' + Math.round(n/1000) + 'k';
   const bigrams = s => { const g = new Set(); for (let i=0;i<s.length-1;i++) g.add(s.slice(i,i+2)); return g; };

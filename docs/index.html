@@ -343,7 +343,7 @@ render();
 (() => {
   const box = el('coq'), out = el('coResults');
   let DATA = null, loading = false;
-  const SUF = /(INC|LLC|LLP|LP|LTD|CORP|CORPORATION|CO|COMPANY|PC|PLLC|THE|USA|US|NA|NORTH AMERICA)/g;
+  const SUF = /\b(INC|LLC|LLP|LP|LTD|CORP|CORPORATION|CO|COMPANY|PC|PLLC|THE|USA|US|NA|NORTH AMERICA)\b/g;
   const norm = s => (s||'').toUpperCase().replace(/[^A-Z0-9& ]/g,' ').replace(SUF,' ').replace(/\s+/g,' ').trim();
   const money = n => '$' + Math.round(n).toLocaleString();
   const kk = n => '$' + Math.round(n/1000) + 'k';

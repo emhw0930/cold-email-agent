@@ -256,6 +256,26 @@ _PAGE = """<!DOCTYPE html>
   footer code { background:var(--glass); border:1px solid var(--line);
     border-radius:6px; padding:1px 7px; font-size:11.5px; }
 
+  /* ── Company H-1B lookup ──────────────────────────── */
+  .lookup { border:1px solid var(--line); border-radius:var(--r-lg);
+    background:var(--card); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+    padding:20px 22px; margin-bottom:30px; }
+  .lookup h2 { font-family:'Space Grotesk',sans-serif; font-size:17px;
+    font-weight:600; margin:0 0 3px; }
+  .lookup p { color:var(--faint); font-size:13px; margin:0 0 14px; }
+  .lookup input[type=search] { width:100%; }
+  .co-results { margin-top:14px; display:grid; gap:10px; }
+  .co-row { display:flex; flex-wrap:wrap; align-items:baseline; gap:6px 16px;
+    padding:13px 16px; border-radius:var(--r-md); background:var(--glass);
+    border:1px solid var(--line); }
+  .co-row .cn { font-size:15px; font-weight:650; color:var(--ink); margin-right:auto; }
+  .co-row .cn small { color:var(--faint); font-weight:500; font-size:12px; margin-left:6px; }
+  .co-stat { font-size:13px; color:var(--muted); white-space:nowrap; }
+  .co-stat b { color:var(--ink); font-weight:700; }
+  .co-stat.sal b { color:var(--ok); }
+  .co-none { color:var(--faint); font-style:italic; }
+  .co-hint { color:var(--faint); font-size:12.5px; padding:6px 2px; }
+
   @media (max-width:640px) {
     .wrap { padding:30px 14px 60px; }
     .toolbar { top:8px; }
@@ -276,6 +296,14 @@ _PAGE = """<!DOCTYPE html>
     <h2>Browse these employers directly</h2>
     <p>Big or scrape-blocked boards — open each one&rsquo;s software-engineer search and filter yourself.</p>
     <div class="pills">__PILLS__</div>
+  </section>
+
+  <section class="lookup" id="lookup">
+    <h2>H-1B company lookup</h2>
+    <p>Type any company to see its H-1B approvals and typical certified H-1B salary.
+       Partial names and small typos work — the closest matches show up.</p>
+    <input type="search" id="coq" placeholder="e.g. Google, Stripe, Precisely…" autocomplete="off">
+    <div class="co-results" id="coResults"></div>
   </section>
 
   <div class="toolbar">
@@ -397,6 +425,72 @@ syncThemeBtn();
 
 q.oninput = render; gradOnly.onchange = render; sortSel.onchange = render;
 render();
+
+// ── Company H-1B lookup (lazy-loads employers.json on first use) ──
+(() => {
+  const box = el('coq'), out = el('coResults');
+  let DATA = null, loading = false;
+  const SUF = /\b(INC|LLC|LLP|LP|LTD|CORP|CORPORATION|CO|COMPANY|PC|PLLC|THE|USA|US|NA|NORTH AMERICA)\b/g;
+  const norm = s => (s||'').toUpperCase().replace(/[^A-Z0-9& ]/g,' ').replace(SUF,' ').replace(/\s+/g,' ').trim();
+  const money = n => '$' + Math.round(n).toLocaleString();
+  const kk = n => '$' + Math.round(n/1000) + 'k';
+  const bigrams = s => { const g = new Set(); for (let i=0;i<s.length-1;i++) g.add(s.slice(i,i+2)); return g; };
+  function dice(a,b){ const A=bigrams(a),B=bigrams(b); if(!A.size||!B.size) return 0;
+    let n=0; for(const x of A) if(B.has(x)) n++; return 2*n/(A.size+B.size); }
+
+  async function load(){
+    if (DATA || loading) return; loading = true;
+    out.innerHTML = '<div class="co-hint">Loading company data…</div>';
+    try {
+      const r = await fetch('employers.json'); const j = await r.json();
+      DATA = j.rows; for (const row of DATA) row.push(norm(row[0]));  // idx 8 = normalized name
+    } catch(e) { out.innerHTML = '<div class="co-hint">Could not load company data.</div>'; loading=false; return; }
+    loading = false; run();
+  }
+
+  function search(qn){
+    const hits = [];
+    for (const r of DATA){
+      const nm = r[8]; let sc = 0;
+      if (nm === qn) sc = 1000;
+      else if (nm.startsWith(qn)) sc = 600 - nm.length*0.3;
+      else if (nm.includes(qn)) sc = 400 - nm.indexOf(qn)*2 - nm.length*0.2;
+      if (sc){ sc += Math.min(45, Math.log10(1 + r[2] + r[7]) * 16); hits.push([r, sc]); }  // prominence boost
+    }
+    if (hits.length < 8){                              // typo fallback: closest by name
+      for (const r of DATA){ const nm = r[8];
+        if (nm === qn || nm.includes(qn)) continue;
+        const s = dice(qn, nm); if (s > 0.5) hits.push([r, s*300]);
+      }
+    }
+    hits.sort((a,b) => b[1]-a[1] || (b[0][2]+b[0][7])-(a[0][2]+a[0][7]));
+    return hits.slice(0, 12).map(h => h[0]);
+  }
+
+  function fmtRow(r){
+    const [name,state,tot,nw,med,p25,p75,n] = r;
+    const cases = tot>0
+      ? `<span class="co-stat"><b>${tot.toLocaleString()}</b> H-1B approvals${nw?` · ${nw.toLocaleString()} new`:''}</span>`
+      : '<span class="co-stat co-none">no USCIS case data</span>';
+    const sal = med>0
+      ? `<span class="co-stat sal">median <b>${money(med)}</b>${(p25&&p75)?` · ${kk(p25)}–${kk(p75)}`:''}${n?` · ${n.toLocaleString()} LCAs`:''}</span>`
+      : '<span class="co-stat co-none">no wage data</span>';
+    return `<div class="co-row"><span class="cn">${esc(name)}${state?` <small>${esc(state)}</small>`:''}</span>${cases}${sal}</div>`;
+  }
+
+  function run(){
+    if (!DATA) return;
+    const qn = norm(box.value.trim());
+    if (qn.length < 2){ out.innerHTML = '<div class="co-hint">Type at least 2 letters.</div>'; return; }
+    const res = search(qn);
+    out.innerHTML = res.length ? res.map(fmtRow).join('')
+      : '<div class="co-hint">No close matches — try fewer letters or a parent company name.</div>';
+  }
+
+  let t;
+  box.addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => DATA ? run() : load(), 140); });
+  box.addEventListener('focus', load, { once:true });
+})();
 </script>
 </body>
 </html>

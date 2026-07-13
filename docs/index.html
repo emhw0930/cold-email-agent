@@ -228,7 +228,7 @@
   <div class="stats" id="stats"></div>
 
   <div class="tracker-bar">
-    <a class="btn-track" href="tracker.html">&#128203;&nbsp; My application tracker &rarr;</a>
+    <a class="btn-track" href="tracker.html">My application tracker &rarr;</a>
     <div class="quick-add">
       <input type="text" id="qaCompany" placeholder="Quick-add a company you applied to…" autocomplete="off">
       <button id="qaBtn">Add to tracker</button>
@@ -385,7 +385,7 @@ render();
                 coldEmail:'', phoneScreen:'', oa:'', round1:'', round2:'' });
     localStorage.setItem(KEY, JSON.stringify(apps));
     inp.value = '';
-    msg.textContent = `✓ Added ${c} — ${apps.length} in your tracker`;
+    msg.textContent = `Added ${c} — ${apps.length} in your tracker`;
     setTimeout(() => { msg.textContent = ''; }, 2800);
   }
   btn.onclick = add;

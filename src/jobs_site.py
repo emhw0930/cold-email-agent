@@ -183,6 +183,28 @@ _PAGE = """<!DOCTYPE html>
   .pill .arrow { color:var(--faint); font-size:12px; transition:color .18s, transform .18s; }
   .pill:hover .arrow { color:var(--sky); transform:translate(1px,-1px); }
 
+  /* ── Tracker bar (button + quick-add) ─────────────── */
+  .tracker-bar { display:flex; flex-wrap:wrap; align-items:center; gap:12px;
+    padding:15px 18px; margin-bottom:26px; border:1px solid var(--line);
+    border-radius:var(--r-lg); background:var(--card);
+    backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); }
+  .btn-track { display:inline-flex; align-items:center; gap:8px; padding:10px 18px;
+    border-radius:999px; background:var(--indigo); color:#fff; font-weight:650;
+    font-size:14px; text-decoration:none; white-space:nowrap;
+    transition:filter .16s, transform .16s; }
+  .btn-track:hover { filter:brightness(1.08); transform:translateY(-1px); }
+  .quick-add { display:flex; flex-wrap:wrap; align-items:center; gap:9px; flex:1; min-width:260px; }
+  .quick-add input { flex:1; min-width:180px; padding:9px 14px; font:inherit; font-size:14px;
+    color:var(--ink); background:var(--glass); border:1px solid var(--line);
+    border-radius:var(--r-md); outline:none; transition:border-color .18s, box-shadow .18s; }
+  .quick-add input::placeholder { color:var(--faint); }
+  .quick-add input:focus { border-color:var(--indigo); box-shadow:0 0 0 3px rgba(99,102,241,.22); }
+  .quick-add button { padding:9px 16px; font:inherit; font-size:14px; font-weight:600; cursor:pointer;
+    border-radius:var(--r-md); background:var(--glass-hi); border:1px solid var(--line-hi); color:var(--ink);
+    transition:border-color .16s; }
+  .quick-add button:hover { border-color:var(--indigo); }
+  .qa-msg { font-size:13px; color:var(--ok); font-weight:600; white-space:nowrap; }
+
   /* ── Sticky glass toolbar ─────────────────────────── */
   .toolbar { position:sticky; top:12px; z-index:20; display:flex; flex-wrap:wrap;
     gap:10px; align-items:center; padding:12px 14px; margin-bottom:14px;
@@ -291,6 +313,15 @@ _PAGE = """<!DOCTYPE html>
   <p class="sub">Entry-level &amp; early-career software engineer roles pulled from the
     public boards of verified H-1B sponsors — Greenhouse, Lever, Ashby &amp; Workday. US-only.</p>
   <div class="stats" id="stats"></div>
+
+  <div class="tracker-bar">
+    <a class="btn-track" href="tracker.html">&#128203;&nbsp; My application tracker &rarr;</a>
+    <div class="quick-add">
+      <input type="text" id="qaCompany" placeholder="Quick-add a company you applied to…" autocomplete="off">
+      <button id="qaBtn">Add to tracker</button>
+      <span class="qa-msg" id="qaMsg"></span>
+    </div>
+  </div>
 
   <section class="browse">
     <h2>Browse these employers directly</h2>
@@ -427,6 +458,26 @@ syncThemeBtn();
 
 q.oninput = render; gradOnly.onchange = render; sortSel.onchange = render;
 render();
+
+// ── Quick-add a company to the tracker (shared localStorage with tracker.html) ──
+(() => {
+  const KEY = 'tracker_apps_v1';
+  const inp = el('qaCompany'), btn = el('qaBtn'), msg = el('qaMsg');
+  const today = () => { const d = new Date(); return `${d.getMonth()+1}/${d.getDate()}/${d.getFullYear()}`; };
+  function add(){
+    const c = inp.value.trim();
+    if (!c){ inp.focus(); return; }
+    let apps = []; try { apps = JSON.parse(localStorage.getItem(KEY)) || []; } catch(e){}
+    apps.push({ company:c, role:'', location:'', link:'', date:today(), note:'',
+                coldEmail:'', phoneScreen:'', oa:'', round1:'', round2:'' });
+    localStorage.setItem(KEY, JSON.stringify(apps));
+    inp.value = '';
+    msg.textContent = `✓ Added ${c} — ${apps.length} in your tracker`;
+    setTimeout(() => { msg.textContent = ''; }, 2800);
+  }
+  btn.onclick = add;
+  inp.addEventListener('keydown', e => { if (e.key === 'Enter') add(); });
+})();
 
 // ── Company H-1B lookup (lazy-loads employers.json on first use) ──
 (() => {

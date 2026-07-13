@@ -26,6 +26,9 @@ logs/
 # GitHub Actions runners are ephemeral and need the board cache and the
 # emailed/seen dedup state that live inside it.
 
+# Outreach retry state (PRIVATE: recruiter targets + email bodies) — never commit
+data/outreach_state.db
+
 # ── OS / editor ───────────────────────────────────────────────
 .DS_Store
 .idea/

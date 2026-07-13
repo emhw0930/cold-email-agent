@@ -327,6 +327,8 @@ _PAGE = """<!DOCTYPE html>
     refreshed daily by GitHub Actions. Click a card to open the original posting.
     &ldquo;First seen&rdquo; is the date this board first spotted the posting.
     Rebuild locally with <code>python src/jobs_site.py</code>.
+    · <a href="tracker.html" style="color:var(--sky)">My application tracker</a>
+    <span style="color:var(--faint)">(private — stored only in your browser)</span>
   </footer>
 </div>
 

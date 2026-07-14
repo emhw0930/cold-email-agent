@@ -51,13 +51,20 @@ def _signature() -> str:
 def _draft(company: str, title: str) -> tuple[str, str]:
     """AI-draft a subject + body (with FIRSTNAME greeting placeholder)."""
     prompt = (
-        f"Write a concise (~110 word) cold outreach email to a recruiter.\n"
-        f"Candidate: {config.YOUR_NAME} — {config.YOUR_BIO}. Lead with UC Berkeley CS and "
-        f"current experience; tie skills to the role. Applying to: {title} at {company}.\n"
-        f"Start the body EXACTLY with 'Hi {GREET},' and do NOT include a signature.\n"
-        f"NEVER mention H1B, visa status, work authorization, or sponsorship.\n"
-        f'Return compact JSON: {{"subject": "...", "body": "..."}} — subject under 90 chars, '
-        f"professional, no buzzwords, no 'I hope this finds you well'."
+        f"Write a concise, professional cold outreach email to a recruiter, following "
+        f"cold-email best practices.\n"
+        f"Candidate: {config.YOUR_NAME} — {config.YOUR_BIO}. Applying to: {title} at {company}.\n"
+        f"Structure the body: (1) 'Hi {GREET},' greeting; (2) one sentence naming the exact "
+        f"role and company and why you're writing; (3) one or two specific, factual sentences "
+        f"tying the candidate's real experience/technologies to this role; (4) exactly ONE "
+        f"low-friction ask (e.g. 'Would you be the right person to speak with about this "
+        f"role?'). Mention the résumé is attached. Do NOT include a signature.\n"
+        f"90-130 words, scannable short paragraphs, respectful of the reader's time.\n"
+        f"NEVER mention H1B, visa status, work authorization, or sponsorship. No buzzwords "
+        f"('passionate', 'synergy', 'leverage'), no 'I hope this finds you well', no spammy "
+        f"words ('free', 'guarantee').\n"
+        f'Return compact JSON: {{"subject": "...", "body": "..."}} — subject short (under 50 '
+        f"chars), specific to the role."
     )
     try:
         import json, re

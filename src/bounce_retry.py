@@ -65,7 +65,9 @@ def candidate_emails(first: str, last: str, domain: str) -> list[str]:
     if not f or not domain:
         return []
     fi, li = f[:1], l[:1]
-    raw = [f"{f}.{l}", f"{fi}{l}", f"{f}_{l}", f"{f}{l}", f, f"{fi}.{l}", f"{f}.{li}"] if l \
+    # order = most common patterns first, so the 3 retries cover first.last,
+    # flast, first@, and first_last (the four dominant company formats)
+    raw = [f"{f}.{l}", f"{fi}{l}", f, f"{f}_{l}", f"{f}{l}", f"{fi}.{l}", f"{f}.{li}"] if l \
         else [f]
     out, seen = [], set()
     for p in raw:

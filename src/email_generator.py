@@ -11,28 +11,35 @@ from __future__ import annotations
 import config
 import gemini
 
-_SYSTEM_PROMPT = """You write cold outreach emails from a job seeker to a corporate recruiter.
+_SYSTEM_PROMPT = """You write concise, professional cold outreach emails from a job seeker \
+to a corporate recruiter. Follow proven cold-email best practices: a recruiter should \
+understand in five seconds who this is, which role it's about, and why they should reply.
 
-Rules:
-- 120-150 words max (body only, no subject line in body)
-- Open with the recruiter's first name greeting
-- Mention the EXACT job title and company name in the first sentence
-- Two concrete sentences about the candidate's background (use the bio provided)
-- End with a clear ask: "Would you be open to a quick call?" or similar
-- Tone: confident, professional, not groveling
-- NEVER mention H1B, visa status, work authorization, or sponsorship anywhere in the email
-- NO filler phrases like "I hope this email finds you well"
-- NO buzzwords like "passionate", "synergy", "leverage"
-- Sign off with name, phone, email(s), and LinkedIn (exactly as provided)
-- Do NOT include the subject line in the body text
-- Output ONLY the email body, nothing else"""
+Write the body in this order:
+1. Greeting using the recruiter's first name.
+2. One sentence stating exactly why you're writing — name the SPECIFIC role (and requisition \
+   ID if provided) and the company — so it reads as a deliberate, one-to-one message.
+3. One or two sentences of concrete value: the candidate's most relevant experience, project, \
+   or result for THIS role, drawn from the background provided. Be specific and factual; name \
+   real technologies or outcomes rather than adjectives.
+4. Exactly ONE clear, low-friction ask (e.g. "Would you be the right person to talk to about \
+   this role?" or "Would you be open to a brief call?"). Never more than one ask.
+5. A sign-off using the exact signature lines provided, one per line.
+
+Hard rules:
+- 90-130 words in the body. Short, scannable paragraphs (1-3 sentences each).
+- Tone: professional, confident, and respectful of the reader's time — never casual, \
+  groveling, or salesy.
+- Mention briefly that the résumé is attached.
+- NEVER mention H1B, visa status, work authorization, or sponsorship.
+- No buzzwords or clichés ("passionate", "synergy", "leverage", "rockstar", "guru", \
+  "I hope this email finds you well") and no spammy words ("free", "guarantee", "act now").
+- Output ONLY the email body — no subject line, no preamble, no markdown, no notes."""
 
 
 def generate_subject(job: dict) -> str:
-    """Generate a concise, specific subject line (no H1B/visa mention)."""
-    title = job["title"]
-    company = job["company"]
-    return f"Interested in the {title} role at {company}"
+    """A short, specific subject line: the role + candidate name (no H1B/visa mention)."""
+    return f"{job['title']} — {config.YOUR_NAME}"
 
 
 def _signature() -> str:
@@ -56,11 +63,12 @@ def _template_body(job: dict, recruiter: dict) -> str:
     greeting = recruiter.get("first_name") or recruiter.get("name") or "there"
     return (
         f"Hi {greeting},\n\n"
-        f"I'm reaching out about the {job['title']} role at {job['company']}. "
-        f"For background, I'm {config.YOUR_BIO}, and the role looks like a strong "
-        f"match for my experience.\n\n"
-        f"Would you be open to a quick call to see if I'd be a good fit?\n\n"
-        f"Best,\n{_signature()}"
+        f"I'm writing about the {job['title']} role at {job['company']}. "
+        f"I'm {config.YOUR_BIO}, and I believe my background is a close match for what "
+        f"the role calls for.\n\n"
+        f"My résumé is attached. Would you be the right person to speak with about this "
+        f"role, or could you point me to whoever is?\n\n"
+        f"Thanks for your time,\n{_signature()}"
     )
 
 
@@ -72,19 +80,20 @@ def generate_email_body(job: dict, recruiter: dict) -> str:
     job keys: title, company, description_snippet
     recruiter keys: first_name, name, title, email
     """
-    user_prompt = f"""Write a cold email for this situation:
+    req = job.get("req") or job.get("job_id") or ""
+    user_prompt = f"""Write a cold outreach email for this situation.
 
 Recipient: {recruiter.get('first_name') or recruiter.get('name', 'Recruiter')} ({recruiter['title']} at {job['company']})
-Job Title: {job['title']}
+Job title: {job['title']}
 Company: {job['company']}
+Requisition/ID (mention only if non-empty): {req}
 Job posting snippet: {job.get('description_snippet', '')[:300]}
 
-Sender info (use these EXACT contact lines in the signature, one per line):
-Name: {config.YOUR_NAME}
-Bio: {config.YOUR_BIO}
-Phone: {config.YOUR_PHONE}
-Email: {config.YOUR_EMAIL_PRIMARY}{(' | ' + config.YOUR_EMAIL_ALT) if config.YOUR_EMAIL_ALT else ''}
-LinkedIn: {config.YOUR_LINKEDIN}"""
+Candidate background — use this ONLY to write the value sentence(s); do NOT put it in the signature:
+{config.YOUR_BIO}
+
+Signature — end with a short sign-off ("Best," or "Thanks for your time,") then EXACTLY these lines, one per line, verbatim, with nothing after them:
+{_signature()}"""
 
     try:
         body = gemini.generate(user_prompt, system=_SYSTEM_PROMPT,

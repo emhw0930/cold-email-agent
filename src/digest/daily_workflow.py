@@ -17,8 +17,8 @@
 #  the site is written regardless of email outcome).
 #
 #  Usage:
-#    python src/daily_workflow.py --to you@example.com
-#    python src/daily_workflow.py --to you@example.com --dry-run
+#    python -m src.digest.daily_workflow --to you@example.com
+#    python -m src.digest.daily_workflow --to you@example.com --dry-run
 # ============================================================
 
 from __future__ import annotations
@@ -28,11 +28,11 @@ import datetime as dt
 import sys
 from pathlib import Path
 
-import h1b_greenhouse as hg
-import fit_ranker
-import daily_job_email
-import jobs_site
-import config
+from src.jobs import h1b_greenhouse as hg
+from src.ranking import fit_ranker
+from src.digest import daily_job_email
+from src.digest import jobs_site
+from src.core import config
 
 
 def rebuild_site(jobs: list[dict]) -> bool:

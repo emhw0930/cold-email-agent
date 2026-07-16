@@ -6,10 +6,10 @@
 #  clean HTML digest. Intended to run daily from launchd.
 #
 #  Usage:
-#    python src/daily_job_email.py --to you@example.com          # all roles
-#    python src/daily_job_email.py --to you@example.com --top 20 # cap at 20
-#    python src/daily_job_email.py --to you@example.com --new-only
-#    python src/daily_job_email.py --to you@example.com --dry-run
+#    python -m src.digest.daily_job_email --to you@example.com          # all roles
+#    python -m src.digest.daily_job_email --to you@example.com --top 20 # cap at 20
+#    python -m src.digest.daily_job_email --to you@example.com --new-only
+#    python -m src.digest.daily_job_email --to you@example.com --dry-run
 # ============================================================
 
 from __future__ import annotations
@@ -20,10 +20,10 @@ import sys
 from email.mime.text import MIMEText
 from urllib.parse import urlencode, quote
 
-import h1b_greenhouse as hg
-import fit_ranker
-import gmail_sender  # reuse the authenticated Gmail service
-import config
+from src.jobs import h1b_greenhouse as hg
+from src.ranking import fit_ranker
+from src.core import gmail_sender  # reuse the authenticated Gmail service
+from src.core import config
 
 OUTREACH_PORT = 8770  # local outreach_server.py (the "Email recruiters" button)
 
@@ -31,7 +31,7 @@ OUTREACH_PORT = 8770  # local outreach_server.py (the "Email recruiters" button)
 # cards: their boards are huge (Amazon) or block scraping (Google/Apple/Tesla/
 # Bloomberg) / would bloat the email. Single source of truth: jobs_site.py
 # (which also renders them at the top of the public site).
-from jobs_site import BROWSE_LINKS
+from src.digest.jobs_site import BROWSE_LINKS
 
 
 def _browse_section() -> str:

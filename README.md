@@ -72,14 +72,14 @@ pip install -r requirements.txt
 cp .env.example .env                                    # keys + profile (see docs/SETUP.md)
 #   assets/resume.pdf                                   # your résumé
 
-python src/daily_workflow.py --to you@example.com --dry-run   # preview site + top-10, no send
-python src/daily_workflow.py --to you@example.com             # the full daily run
-python src/outreach.py --company stripe.com --title "Software Engineer" --max 5   # outreach preview
+python -m src.digest.daily_workflow --to you@example.com --dry-run   # preview site + top-10, no send
+python -m src.digest.daily_workflow --to you@example.com             # the full daily run
+python -m src.outreach.outreach --company stripe.com --title "Software Engineer" --max 5   # outreach preview
 ```
 
-To target a non-software field manually, edit the role-title keywords in `src/ats.py`
+To target a non-software field manually, edit the role-title keywords in `src/jobs/ats.py`
 (`_POSITIVE` / `_JUNIOR` / `_SENIOR` / `_NONSOFTWARE`) and the "Fresh SWE roles" display
-strings in `src/jobs_site.py` and `src/daily_job_email.py` — or just ask Claude Code to.
+strings in `src/digest/jobs_site.py` and `src/digest/daily_job_email.py` — or just ask Claude Code to.
 
 ---
 
@@ -112,10 +112,10 @@ Security → App passwords), `SHEETS_SPREADSHEET_ID`, `DIGEST_TO`, `RESUME_TEXT`
 ### Run it yourself
 
 ```bash
-python src/daily_workflow.py --to you@example.com --dry-run   # site + top-10 preview, no send
-python src/daily_workflow.py --to you@example.com             # the full daily run
-python src/jobs_site.py --open                                # just rebuild + open the site
-python src/daily_job_email.py --to you@example.com --top 20   # classic digest (no site)
+python -m src.digest.daily_workflow --to you@example.com --dry-run   # site + top-10 preview, no send
+python -m src.digest.daily_workflow --to you@example.com             # the full daily run
+python -m src.digest.jobs_site --open                                # just rebuild + open the site
+python -m src.digest.daily_job_email --to you@example.com --top 20   # classic digest (no site)
 ```
 
 How it's built:
@@ -124,15 +124,15 @@ How it's built:
   (`data/h1b_employers.db`) and ranks sponsors by *New Employment Approvals* — fresh
   (often cap-subject) hires, not renewals.
   ```bash
-  python src/h1b_db.py --csv "Employer Information.csv" --top 25   # (re)build the DB
+  python -m src.core.h1b_db --csv "Employer Information.csv" --top 25   # (re)build the DB
   ```
 - **`ats.py` + `h1b_greenhouse.py`** map each sponsor to its public **Greenhouse / Lever /
   Ashby** board (slug-guess + probe, since no ATS offers global search), cache the working
   boards, and pull fresh explicit-junior SWE roles.
   ```bash
-  python src/h1b_greenhouse.py --resolve --n 500   # discover + cache boards
-  python src/h1b_greenhouse.py --list              # show cached boards
-  python src/h1b_greenhouse.py --jobs              # fresh junior roles across all boards
+  python -m src.jobs.h1b_greenhouse --resolve --n 500   # discover + cache boards
+  python -m src.jobs.h1b_greenhouse --list              # show cached boards
+  python -m src.jobs.h1b_greenhouse --jobs              # fresh junior roles across all boards
   ```
   Cached board list lives in `data/h1b_sponsors.json`.
 - **`fit_ranker.py`** drops roles whose JD explicitly says "no sponsorship" (free regex),
@@ -146,7 +146,7 @@ How it's built:
   "Email recruiters" button in the digest — it opens a review page with an AI-drafted
   email and a recruiter-email builder, and only sends when you click Send.
   ```bash
-  python src/outreach_server.py
+  python -m src.outreach.outreach_server
   ```
 
 ---
@@ -155,26 +155,31 @@ How it's built:
 
 You applied to a role; reach a few recruiters and hiring managers there.
 
-### 1. Targeted outreach — `src/outreach.py` (recommended)
+### 1. Targeted outreach — `src/outreach/outreach.py` (recommended)
 ```bash
-python src/outreach.py --company <domain> --title "<job title>" [--jd jd.txt] [--max N] [--send]
+python -m src.outreach.outreach --company <domain> --title "<job title>" [--jd jd.txt] [--max N] [--send]
 ```
 - Defaults to **preview** (safe). Add `--send` to actually send.
 - Only sends to **Prospeo-verified** emails by default (avoids bounces);
   `--allow-unverified` to override.
 - De-duplicates by recipient — won't email the same person twice.
 
-### 2. Review server — `src/outreach_server.py`
+### 2. Review server — `src/outreach/outreach_server.py`
 A local web page (http://127.0.0.1:8770) behind the digest's "Email recruiters" button:
 paste recruiter names, pick the company's email pattern, preview AI-drafted emails, and
 send + log — nothing goes out until you click Send.
 ```bash
-python src/outreach_server.py
+python -m src.outreach.outreach_server
 ```
 
 ---
 
 ## Project structure
+
+`src/` is a Python package split into five subpackages by responsibility. Data flows
+left-to-right through them: **jobs** sources roles → **ranking** scores them →
+**digest** publishes + emails → (**outreach** handles the separate cold-email half),
+all on top of **core** shared infrastructure.
 
 ```
 h1b-job-agent/
@@ -183,41 +188,56 @@ h1b-job-agent/
 ├── requirements.txt
 ├── .github/workflows/
 │   └── daily.yml          ← daily 8am ET automation (site refresh + top-10 email)
-├── assets/                ← gitignored: OAuth JSON, service account, resume.pdf
+├── assets/                ← gitignored personal files (résumé, OAuth JSON, keys)
+│   ├── resume.pdf         ← your résumé (fit ranking reads it)
+│   ├── experience.json    ← curated résumé bullets → the RAG knowledge base
+│   └── experience.example.json  ← committed template showing the schema
 ├── data/
-│   ├── h1b_employers.db   ← SQLite: USCIS sponsors + board cache + emailed/seen
+│   ├── h1b_employers.db   ← SQLite: USCIS sponsors + wages + board cache + emailed/seen
 │   │                        dedup state (COMMITTED — the Action needs it)
-│   └── h1b_sponsors.json  ← cached sponsor → confirmed ATS board mapping
+│   ├── h1b_sponsors.json  ← cached sponsor → confirmed ATS board mapping
+│   ├── resume_kb.db       ← RAG vectors for résumé bullets (gitignored, private)
+│   └── outreach_state.db  ← cold-email send/bounce state (gitignored, private)
 ├── docs/                  ← served by GitHub Pages
 │   ├── index.html         ← the public job board (regenerated daily)
-│   ├── SETUP.md           ← one-time setup (API keys, OAuth, Sheets)
-│   ├── AGENT.md           ← how to drive this with Claude / Cowork
-│   └── PROMPTS.md         ← ready-to-paste prompts for an AI assistant
+│   ├── employers.json     ← 53K-company H-1B + salary lookup dataset
+│   ├── tracker.html       ← private, browser-only application tracker
+│   └── SETUP.md · AGENT.md · PROMPTS.md   ← setup + AI-assistant docs
 └── src/
-    ├── config.py          ← loads config/secrets from .env
-    │   # ── Daily digest ──
-    ├── daily_workflow.py  ← THE daily entry point: site + rank + email top 10
-    ├── h1b_db.py          ← USCIS H-1B CSV → SQLite, ranked by new approvals
-    ├── ats.py             ← Greenhouse/Lever/Ashby/Workday/Amazon board readers
-    ├── h1b_greenhouse.py  ← board resolver, fresh-role puller, emailed-dedup
-    ├── fit_ranker.py      ← sponsorship gate + Gemini(free) fit ranking, keyword fallback
-    ├── gemini.py          ← shared free-tier Gemini client (ranking + email writing)
-    ├── jobs_site.py       ← generates the public site (docs/index.html)
-    ├── daily_job_email.py ← builds + emails the HTML digest
-    │   # ── Cold outreach (interactive) ──
-    ├── outreach.py        ← targeted, human-in-the-loop CLI  (start here)
-    ├── outreach_server.py ← local review server behind the digest's outreach button
-    ├── prospeo_lookup.py  ← recruiter search + verified-email reveal
-    ├── email_generator.py ← Gemini-written tailored emails (template fallback)
-    ├── gmail_sender.py    ← Gmail send: SMTP app-password or OAuth + attachments
-    └── sheets_logger.py   ← Google Sheets logging + dedup
+    ├── core/              ← shared infrastructure
+    │   ├── config.py        ← loads config/secrets from .env; repo-root resolution
+    │   ├── gemini.py        ← free-tier Gemini client: LLM + embeddings
+    │   ├── h1b_db.py        ← USCIS H-1B CSV → SQLite, ranked by new approvals
+    │   └── gmail_sender.py  ← Gmail send: SMTP app-password or OAuth + attachments
+    ├── jobs/              ← sourcing sponsor roles
+    │   ├── ats.py           ← Greenhouse/Lever/Ashby/Workday board readers
+    │   ├── h1b_greenhouse.py← board resolver, fresh-role puller, emailed-dedup
+    │   └── company_lookup.py← builds docs/employers.json (H-1B + salary data)
+    ├── ranking/           ← résumé fit + retrieval
+    │   ├── fit_ranker.py    ← sponsorship gate + Gemini(free) fit scoring, keyword fallback
+    │   └── resume_kb.py     ← RAG: semantic + keyword retrieval over résumé bullets
+    ├── digest/            ← the daily half  (entry point)
+    │   ├── daily_workflow.py← THE daily entry point: site + rank + email top 10
+    │   ├── jobs_site.py     ← generates the public site (docs/index.html)
+    │   └── daily_job_email.py← builds + emails the HTML top-10 digest
+    └── outreach/          ← the cold-email half (interactive)
+        ├── outreach.py      ← targeted, human-in-the-loop CLI  (start here)
+        ├── outreach_server.py← local review server behind the digest's outreach button
+        ├── prospeo_lookup.py← recruiter search + verified-email reveal
+        ├── email_generator.py← Gemini emails, grounded in ranking.resume_kb (template fallback)
+        ├── sheets_logger.py ← Google Sheets logging + dedup
+        └── bounce_retry.py  ← detects bounced sends, retries alternate address patterns
 ```
+
+Run any module as `python -m src.<pkg>.<module>` (e.g. `python -m src.digest.daily_workflow`).
+Imports are absolute (`from src.core import config`), so every folder is a package with an
+`__init__.py`.
 
 ---
 
 ## Configuration
 
-Everything lives in `.env` (loaded by `src/config.py`); see `.env.example` for the full list.
+Everything lives in `.env` (loaded by `src/core/config.py`); see `.env.example` for the full list.
 
 | Variable | What it is |
 |----------|-----------|
@@ -245,7 +265,7 @@ Prefer running from your own machine instead? cron/launchd works too:
 ```bash
 crontab -e
 # every day at 8am:
-0 8 * * * cd /path/to/h1b-job-agent && /path/to/venv/bin/python src/daily_workflow.py --to you@example.com >> logs/daily.log 2>&1
+0 8 * * * cd /path/to/h1b-job-agent && /path/to/venv/bin/python -m src.digest.daily_workflow --to you@example.com >> logs/daily.log 2>&1
 ```
 
 (If both run, dedup keeps them consistent — but pull before local runs so the

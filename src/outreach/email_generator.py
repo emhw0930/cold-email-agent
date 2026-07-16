@@ -8,8 +8,9 @@
 
 from __future__ import annotations
 
-import config
-import gemini
+from src.core import config
+from src.core import gemini
+from src.ranking import resume_kb
 
 _SYSTEM_PROMPT = """You write concise, professional cold outreach emails from a job seeker \
 to a corporate recruiter. Follow proven cold-email best practices: a recruiter should \
@@ -30,6 +31,11 @@ Hard rules:
 - 90-130 words in the body. Short, scannable paragraphs (1-3 sentences each).
 - Tone: professional, confident, and respectful of the reader's time — never casual, \
   groveling, or salesy.
+- GROUNDING (critical): claim ONLY experience, skills, technologies, and outcomes that \
+  appear verbatim in the candidate background provided. NEVER state or imply the candidate \
+  has done something merely because the job posting asks for it. Do NOT copy requirements or \
+  phrases from the job posting into the candidate's experience. If the background doesn't \
+  cover something the role wants, simply omit it — do not invent a bridge.
 - Mention briefly that the résumé is attached.
 - NEVER mention H1B, visa status, work authorization, or sponsorship.
 - No buzzwords or clichés ("passionate", "synergy", "leverage", "rockstar", "guru", \
@@ -72,6 +78,21 @@ def _template_body(job: dict, recruiter: dict) -> str:
     )
 
 
+def _relevant_experience(job: dict) -> str | None:
+    """Retrieve the candidate's most relevant real experience for THIS job
+    (semantic + keyword search over assets/experience.json). Returns a bullet
+    list the model must ground the email in, or None when retrieval yields
+    nothing / is unavailable so the caller falls back to the plain bio."""
+    query = f"{job.get('description_snippet', '')} {job.get('req', '')}".strip()
+    try:
+        hits = resume_kb.retrieve(query, title=job.get("title", ""), k=4)
+    except Exception:
+        return None
+    if not hits:
+        return None
+    return "\n".join(f"- {h['text']}" for h in hits)
+
+
 def generate_email_body(job: dict, recruiter: dict) -> str:
     """
     Call Gemini to write a personalized cold email body. Falls back to a
@@ -81,6 +102,22 @@ def generate_email_body(job: dict, recruiter: dict) -> str:
     recruiter keys: first_name, name, title, email
     """
     req = job.get("req") or job.get("job_id") or ""
+    # Ground the value sentence(s) in the résumé bullets most relevant to THIS
+    # role (RAG). Falls back to the one-line bio when nothing is retrieved.
+    evidence = _relevant_experience(job)
+    if evidence:
+        background_block = (
+            "Candidate's most relevant REAL experience for this role — write the "
+            "value sentence(s) using ONLY these facts; pick the 1-2 that best fit "
+            "the job and do NOT invent, embellish, or add anything not stated here. "
+            "Do NOT put these in the signature:\n"
+            f"{evidence}")
+    else:
+        background_block = (
+            "Candidate background — use this ONLY to write the value sentence(s); "
+            "do NOT put it in the signature:\n"
+            f"- {config.YOUR_BIO}")
+
     user_prompt = f"""Write a cold outreach email for this situation.
 
 Recipient: {recruiter.get('first_name') or recruiter.get('name', 'Recruiter')} ({recruiter['title']} at {job['company']})
@@ -89,15 +126,14 @@ Company: {job['company']}
 Requisition/ID (mention only if non-empty): {req}
 Job posting snippet: {job.get('description_snippet', '')[:300]}
 
-Candidate background — use this ONLY to write the value sentence(s); do NOT put it in the signature:
-{config.YOUR_BIO}
+{background_block}
 
 Signature — end with a short sign-off ("Best," or "Thanks for your time,") then EXACTLY these lines, one per line, verbatim, with nothing after them:
 {_signature()}"""
 
     try:
         body = gemini.generate(user_prompt, system=_SYSTEM_PROMPT,
-                               max_output_tokens=800, temperature=0.6)
+                               max_output_tokens=800, temperature=0.4)
         return body.strip()
     except gemini.GeminiUnavailable:
         print("  ⚠ Gemini unavailable — using template email")

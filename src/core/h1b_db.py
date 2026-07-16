@@ -21,7 +21,17 @@ import csv
 import sqlite3
 from pathlib import Path
 
-DB_PATH = str(Path(__file__).resolve().parent.parent / "data" / "h1b_employers.db")
+# Locate the repo root by walking up to the dir holding requirements.txt, so the
+# DB path is correct regardless of this module's depth. Kept self-contained (no
+# config import) so loading the DB layer never requires the app's secrets.
+def _find_root(start: Path) -> Path:
+    for p in (start, *start.parents):
+        if (p / "requirements.txt").exists():
+            return p
+    return start.parents[-1]
+
+
+DB_PATH = str(_find_root(Path(__file__).resolve()) / "data" / "h1b_employers.db")
 
 # USCIS column header -> our snake_case column
 _COLUMNS = {

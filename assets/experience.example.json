@@ -1,0 +1,20 @@
+[
+  {
+    "id": "unique-slug-per-bullet",
+    "text": "One résumé bullet or achievement, stated as a real fact. Keep each chunk to a single accomplishment — the retriever surfaces the few most relevant of these per job, and the cold-email writer is allowed to use ONLY these facts (an anti-fabrication guardrail).",
+    "source": "Company or Project — Role",
+    "tags": ["technology", "skill", "domain", "keywords that appear literally in matching job posts"]
+  },
+  {
+    "id": "example-backend",
+    "text": "Built backend services in FastAPI and Spring Boot, integrating PostgreSQL and a cloud data warehouse.",
+    "source": "Example Corp — Software Engineer",
+    "tags": ["fastapi", "spring boot", "postgresql", "backend", "api"]
+  },
+  {
+    "id": "example-ml",
+    "text": "Trained computer-vision models with PyTorch and OpenCV, reaching 90% detection accuracy on a custom dataset.",
+    "source": "Example Lab — Research Intern",
+    "tags": ["pytorch", "opencv", "computer vision", "ml", "python"]
+  }
+]

@@ -12,8 +12,17 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-# Repo root is the parent of src/ (this file lives in src/).
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+# Repo root = the nearest ancestor holding requirements.txt. Walking up (rather
+# than a fixed number of ".parent" hops) keeps path resolution correct no matter
+# how deep in the package tree this module lives.
+def _find_root(start: Path) -> Path:
+    for p in (start, *start.parents):
+        if (p / "requirements.txt").exists():
+            return p
+    return start.parents[-1]
+
+
+PROJECT_ROOT = _find_root(Path(__file__).resolve())
 load_dotenv(PROJECT_ROOT / ".env")
 
 

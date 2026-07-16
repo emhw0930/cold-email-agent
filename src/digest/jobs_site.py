@@ -13,9 +13,9 @@
 #  the page runs on vanilla JS. Open the output file in a browser.
 #
 #  Usage:
-#    python src/jobs_site.py                 # -> docs/index.html (GitHub Pages)
-#    python src/jobs_site.py --out foo.html  # custom path
-#    python src/jobs_site.py --open          # build + open in browser
+#    python -m src.digest.jobs_site                 # -> docs/index.html (GitHub Pages)
+#    python -m src.digest.jobs_site --out foo.html  # custom path
+#    python -m src.digest.jobs_site --open          # build + open in browser
 # ============================================================
 
 from __future__ import annotations
@@ -26,9 +26,9 @@ import json
 import webbrowser
 from pathlib import Path
 
-import h1b_greenhouse as hg
-import fit_ranker
-import config
+from src.jobs import h1b_greenhouse as hg
+from src.ranking import fit_ranker
+from src.core import config
 
 # docs/ because GitHub Pages can only serve a branch's root or /docs folder.
 OUT_DEFAULT = Path(config.PROJECT_ROOT) / "docs" / "index.html"
@@ -357,7 +357,7 @@ _PAGE = """<!DOCTYPE html>
     __COUNT__ roles · sourced from the public ATS boards of top H-1B sponsors ·
     refreshed daily by GitHub Actions. Click a card to open the original posting.
     &ldquo;First seen&rdquo; is the date this board first spotted the posting.
-    Rebuild locally with <code>python src/jobs_site.py</code>.
+    Rebuild locally with <code>python -m src.digest.jobs_site</code>.
     · <a href="tracker.html" style="color:var(--sky)">My application tracker</a>
     <span style="color:var(--faint)">(private — stored only in your browser)</span>
   </footer>

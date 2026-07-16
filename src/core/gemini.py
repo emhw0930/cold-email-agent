@@ -19,11 +19,16 @@ import time
 
 import requests
 
-import config
+from src.core import config
 
 # Free-tier quotas are PER MODEL and much smaller than advertised, so we
 # keep a fallback chain: the configured model first, then flash as backup.
 _MODELS = list(dict.fromkeys([config.GEMINI_MODEL, "gemini-2.5-flash"]))
+# Embedding model — free tier. Used by resume_kb for RAG retrieval. We request
+# 768 dimensions (the model defaults to 3072) — plenty for a tiny résumé corpus
+# and a third the storage.
+_EMBED_MODEL = "gemini-embedding-001"
+_EMBED_DIMS = 768
 _dead: set[str] = set()          # models whose daily quota is gone (this run)
 _lock = threading.Lock()
 _next_ok = 0.0
@@ -99,3 +104,43 @@ def generate(prompt: str, *, system: str = "", max_output_tokens: int = 500,
             r.raise_for_status()
             return r.json()["candidates"][0]["content"]["parts"][0]["text"]
     raise GeminiUnavailable("gemini quota exhausted on all models")
+
+
+def embed(texts: str | list[str], *, task_type: str = "RETRIEVAL_DOCUMENT") -> list[list[float]]:
+    """Return an embedding vector (list of floats) for each input text.
+
+    Uses the free-tier text-embedding-004 model. `task_type` should be
+    RETRIEVAL_DOCUMENT when embedding stored corpus chunks and RETRIEVAL_QUERY
+    when embedding a search query — Gemini tunes the two ends of the retrieval
+    asymmetrically, which improves match quality.
+
+    A single string returns a 1-element list. Raises GeminiUnavailable when the
+    key is unset or the embedding quota is spent, so callers can fall back to
+    keyword-only retrieval rather than crash.
+    """
+    if not config.GEMINI_API_KEY:
+        raise GeminiUnavailable("GEMINI_API_KEY not set")
+    if isinstance(texts, str):
+        texts = [texts]
+    if not texts:
+        return []
+    # gemini-embedding-001 serves one text per call (no synchronous batch), so
+    # we loop. The corpus is embedded once (and only when a bullet changes), and
+    # queries are single, so the call count stays tiny.
+    url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
+           f"{_EMBED_MODEL}:embedContent")
+    out: list[list[float]] = []
+    for t in texts:
+        body = {"model": f"models/{_EMBED_MODEL}",
+                "content": {"parts": [{"text": t}]},
+                "taskType": task_type,
+                "outputDimensionality": _EMBED_DIMS}
+        _throttle()
+        r = requests.post(url, json=body, timeout=45,
+                          headers={"x-goog-api-key": config.GEMINI_API_KEY,
+                                   "Content-Type": "application/json"})
+        if r.status_code == 429:
+            raise GeminiUnavailable("embedding quota exhausted")
+        r.raise_for_status()
+        out.append(r.json()["embedding"]["values"])
+    return out

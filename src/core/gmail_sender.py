@@ -27,7 +27,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-import config
+from src.core import config
 
 # Only send permission — minimal OAuth scope
 SCOPES = ["https://www.googleapis.com/auth/gmail.send"]

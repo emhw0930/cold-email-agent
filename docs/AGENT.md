@@ -10,7 +10,7 @@ A human-in-the-loop cold-outreach tool. The user applies to a job, then pastes t
 **company name + job description (JD)** to you. Your job: find the right people, write
 tailored emails referencing the user's resume, get approval, send, and log.
 
-- Code lives in `src/`. Secrets/config in `.env` (loaded by `src/config.py`).
+- Code lives in `src/`. Secrets/config in `.env` (loaded by `src/core/config.py`).
 - The user's resume is at `assets/resume.pdf` (attached automatically on every send).
 - Every send is logged to Google Sheets.
 - **Always run Python from the repo root** with the venv active:
@@ -65,7 +65,7 @@ tailored emails referencing the user's resume, get approval, send, and log.
      don't email someone on the wrong team.
 
 **d. Draft a tailored email per person.**
-   - Use `src/email_generator.py` (Gemini) or write it directly. Keep it ~100–120 words.
+   - Use `src/outreach/email_generator.py` (Gemini) or write it directly. Keep it ~100–120 words.
    - Tie the user's resume specifics to the JD (e.g. messaging-app project ↔ messaging role,
      LangGraph/AI agent work ↔ AI roles, GCP/FastAPI ↔ backend/cloud roles).
    - Lead with **UC Berkeley CS** + **Genuine Parts Company (Fortune 200)**.

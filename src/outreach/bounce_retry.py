@@ -11,10 +11,10 @@
 #  message, and which address patterns have already been tried.
 #
 #  Usage:
-#    python src/bounce_retry.py --check                 # report bounces + plan
-#    python src/bounce_retry.py --retry --dry-run       # show what it would resend
-#    python src/bounce_retry.py --retry                 # actually resend
-#    python src/bounce_retry.py --retry --max-retries 2
+#    python -m src.outreach.bounce_retry --check                 # report bounces + plan
+#    python -m src.outreach.bounce_retry --retry --dry-run       # show what it would resend
+#    python -m src.outreach.bounce_retry --retry                 # actually resend
+#    python -m src.outreach.bounce_retry --retry --max-retries 2
 #
 #  Reading the inbox needs GMAIL_APP_PASSWORD (IMAP must be enabled in Gmail).
 # ============================================================
@@ -30,8 +30,8 @@ import sqlite3
 from email.header import decode_header, make_header
 from pathlib import Path
 
-import config
-from gmail_sender import send_email
+from src.core import config
+from src.core.gmail_sender import send_email
 
 STATE_DB = str(Path(config.PROJECT_ROOT) / "data" / "outreach_state.db")
 

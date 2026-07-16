@@ -24,10 +24,10 @@ import re
 from functools import lru_cache
 from pathlib import Path
 
-import ats
-import config
-import gemini
-import h1b_db
+from src.jobs import ats
+from src.core import config
+from src.core import gemini
+from src.core import h1b_db
 
 # ── Sponsorship gate ─────────────────────────────────────────
 # Phrases that mean "we will NOT sponsor". Kept specific to avoid
@@ -345,7 +345,7 @@ def enrich(jobs: list[dict], limit: int = 40, drop_no_sponsorship: bool = True) 
 
 # ── Quick test ───────────────────────────────────────────────
 if __name__ == "__main__":
-    import h1b_greenhouse as hg
+    from src.jobs import h1b_greenhouse as hg
     jobs = hg.daily_fresh_swe(us_only=True, limit=8)
     ranked = enrich(jobs, limit=8)
     print(f"Ranked {len(ranked)} roles:\n")

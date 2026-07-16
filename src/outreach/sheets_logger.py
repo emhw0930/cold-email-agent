@@ -12,7 +12,7 @@ from typing import Optional
 import gspread
 from google.oauth2.service_account import Credentials
 
-import config
+from src.core import config
 
 # Sheets columns (1-indexed header row)
 HEADERS = [

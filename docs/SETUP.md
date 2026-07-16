@@ -130,10 +130,10 @@ The header row and worksheet are created automatically on first log.
 ```bash
 source venv/bin/activate
 
-python src/sheets_logger.py      # should print: Connected to worksheet
-python src/prospeo_lookup.py     # should print recruiter search results
-python src/email_generator.py    # prints a sample generated email
-python src/outreach.py --company stripe.com --title "Software Engineer" --max 3
+python -m src.outreach.sheets_logger      # should print: Connected to worksheet
+python -m src.outreach.prospeo_lookup     # should print recruiter search results
+python -m src.outreach.email_generator    # prints a sample generated email
+python -m src.outreach.outreach --company stripe.com --title "Software Engineer" --max 3
                                  # preview mode (default) — finds recruiters, drafts, no send
 ```
 
@@ -163,7 +163,7 @@ Enable GitHub Pages (**Settings → Pages** → branch `main`, folder `/docs`) t
 job board. Test with **Actions tab → Daily job digest + site refresh → Run workflow**.
 
 Prefer local cron instead? `0 8 * * * cd /path/to/h1b-job-agent && venv/bin/python
-src/daily_workflow.py --to you@example.com >> logs/daily.log 2>&1`
+-m src.digest.daily_workflow --to you@example.com >> logs/daily.log 2>&1`
 
 ---
 

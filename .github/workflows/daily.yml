@@ -44,7 +44,7 @@ jobs:
           printf '%s' "${{ secrets.RESUME_TEXT }}" > assets/resume.txt
 
       - name: Run daily workflow (site + top-10 email)
-        run: python src/daily_workflow.py --to ${{ secrets.DIGEST_TO }}
+        run: python -m src.digest.daily_workflow --to ${{ secrets.DIGEST_TO }}
 
       - name: Commit refreshed site + dedup state
         run: |

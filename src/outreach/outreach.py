@@ -25,11 +25,11 @@ import sys
 import time
 from pathlib import Path
 
-import config
-from prospeo_lookup import _search_recruiters, _reveal_email
-from email_generator import generate_outreach
-from gmail_sender import send_email
-from sheets_logger import already_emailed, log_outreach
+from src.core import config
+from src.outreach.prospeo_lookup import _search_recruiters, _reveal_email
+from src.outreach.email_generator import generate_outreach
+from src.core.gmail_sender import send_email
+from src.outreach.sheets_logger import already_emailed, log_outreach
 
 
 def find_verified_recruiters(company_domain: str, max_people: int,

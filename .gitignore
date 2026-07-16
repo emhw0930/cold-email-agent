@@ -4,6 +4,8 @@ assets/gmail_credentials.json
 assets/gmail_token.json
 assets/sheets_service_account.json
 assets/*.json
+# …but DO ship the retrieval-corpus template so forkers see the schema:
+!assets/experience.example.json
 
 # ── Personal documents ────────────────────────────────────────
 assets/resume.pdf
@@ -28,6 +30,10 @@ logs/
 
 # Outreach retry state (PRIVATE: recruiter targets + email bodies) — never commit
 data/outreach_state.db
+
+# Résumé retrieval knowledge base (PRIVATE: résumé bullet text + embeddings) —
+# rebuilt locally from assets/experience.json via `python src/resume_kb.py --build`
+data/resume_kb.db
 
 # ── OS / editor ───────────────────────────────────────────────
 .DS_Store

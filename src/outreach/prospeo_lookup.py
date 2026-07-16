@@ -21,7 +21,7 @@ from typing import Optional
 import requests
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-import config
+from src.core import config
 
 SEARCH_PERSON = "https://api.prospeo.io/search-person"
 ENRICH_PERSON = "https://api.prospeo.io/enrich-person"

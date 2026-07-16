@@ -1,7 +1,7 @@
 # ============================================================
 #  h1b_greenhouse.py
 #  Bridge between the H-1B sponsor database and public ATS
-#  job boards (Greenhouse, Lever, Ashby — via src/ats.py).
+#  job boards (Greenhouse, Lever, Ashby — via src/jobs/ats.py).
 #
 #  1. resolve_boards(): for the top-N sponsors, guess a board
 #     slug from the employer name and probe each ATS; cache the
@@ -21,8 +21,8 @@ import datetime as dt
 import re
 from concurrent.futures import ThreadPoolExecutor
 
-import ats
-import h1b_db
+from src.jobs import ats
+from src.core import h1b_db
 
 _STOP = {
     "inc", "incorporated", "corp", "corporation", "llc", "llp", "ltd",
@@ -435,7 +435,7 @@ def daily_fresh_swe(us_only: bool = True, limit: int | None = None,
     """
     boards = valid_boards(db_path, include_custom=include_custom)
     if not boards:
-        raise RuntimeError("No resolved boards yet. Run: python src/h1b_greenhouse.py --resolve")
+        raise RuntimeError("No resolved boards yet. Run: python -m src.jobs.h1b_greenhouse --resolve")
 
     def _one(board):
         prov, tok = board

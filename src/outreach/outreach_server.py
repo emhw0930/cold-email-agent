@@ -14,24 +14,21 @@
 #  Runs locally (http://127.0.0.1:8770). Works from the Mac it
 #  runs on; not from a phone (localhost isn't reachable there).
 #
-#  Start:  python src/outreach_server.py
+#  Start:  python -m src.outreach.outreach_server
 # ============================================================
 
 from __future__ import annotations
 
 import html
-import sys
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
-import ats
-import config
-import gemini
-import gmail_sender
-import sheets_logger
+from src.jobs import ats
+from src.core import config
+from src.core import gemini
+from src.core import gmail_sender
+from src.outreach import sheets_logger
 
 PORT = 8770
 GREET = "FIRSTNAME"  # placeholder replaced per-recipient at send time

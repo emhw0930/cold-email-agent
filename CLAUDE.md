@@ -40,12 +40,12 @@ mechanical engineer"), their **résumé**, and the **email address** for the dig
    only needed for the outreach half.
 3. **Field switch (only if NOT software engineering)** — the pipeline pulls SWE titles by
    default. To target another field, edit these and nothing else:
-   - `src/ats.py` → `_POSITIVE` (role-title keywords to KEEP, e.g. for a data analyst:
+   - `src/jobs/ats.py` → `_POSITIVE` (role-title keywords to KEEP, e.g. for a data analyst:
      `"data analyst"`, `"business analyst"`, `"analytics"`), `_JUNIOR`/`_SENIOR` (seniority
      words), and `_NONSOFTWARE` (titles to REJECT). **Do not touch `is_us()` or the
      sponsorship logic** — those are field-independent.
-   - Display strings "Fresh SWE roles" / "SWE role": `src/jobs_site.py` (`<title>` + `<h1>`)
-     and `src/daily_job_email.py` (subject line + empty-state text). Rename to the field.
+   - Display strings "Fresh SWE roles" / "SWE role": `src/digest/jobs_site.py` (`<title>` + `<h1>`)
+     and `src/digest/daily_job_email.py` (subject line + empty-state text). Rename to the field.
    - Optionally `config.JOB_SEARCH_TERMS` (used by the outreach-side aggregator).
    After editing, run a dry run (below) to confirm roles still come through.
 4. **Personalize outreach** — `docs/AGENT.md` holds the *current* owner's background and
@@ -57,11 +57,11 @@ mechanical engineer"), their **résumé**, and the **email address** for the dig
 
 ## Running it (translate these to the user; they just talk to you)
 
-- **Preview the daily run (no email):** `python src/daily_workflow.py --to <email> --dry-run`
-- **Full daily run:** `python src/daily_workflow.py --to <email>` (site + top-10 email)
-- **Rebuild just the site:** `python src/jobs_site.py --open`
+- **Preview the daily run (no email):** `python -m src.digest.daily_workflow --to <email> --dry-run`
+- **Full daily run:** `python -m src.digest.daily_workflow --to <email>` (site + top-10 email)
+- **Rebuild just the site:** `python -m src.digest.jobs_site --open`
 - **Cold outreach for a company (preview):**
-  `python src/outreach.py --company <domain> --title "<role>" --jd jd.txt --max 5`
+  `python -m src.outreach.outreach --company <domain> --title "<role>" --jd jd.txt --max 5`
   (add `--send` only after the user approves the drafts)
 - The GitHub Action `.github/workflows/daily.yml` runs the full daily loop at 8 AM ET.
 
@@ -80,8 +80,20 @@ mechanical engineer"), their **résumé**, and the **email address** for the dig
 
 ## File map
 
-`src/daily_workflow.py` is THE daily entry point. It uses `h1b_greenhouse.py` (which uses
-`h1b_db.py` + `ats.py`) to fetch sponsor-board roles, `fit_ranker.py` to score them,
-`jobs_site.py` to build the site, and `daily_job_email.py` to email the top 10.
-The cold-outreach half is `outreach.py` / `outreach_server.py` with `prospeo_lookup.py`,
-`email_generator.py`, `gmail_sender.py`, `sheets_logger.py`. Secrets/config: `config.py`.
+`src/` is a package split into five subpackages:
+
+- **`src/core/`** — shared infrastructure: `config.py` (secrets/paths), `gemini.py` (free
+  Gemini LLM + embeddings client), `h1b_db.py` (SQLite), `gmail_sender.py` (email transport).
+- **`src/jobs/`** — sourcing sponsor roles: `ats.py` (ATS parsing/filters),
+  `h1b_greenhouse.py` (board discovery + fetch), `company_lookup.py` (builds `docs/employers.json`).
+- **`src/ranking/`** — `fit_ranker.py` (résumé fit scoring + sponsorship gate) and
+  `resume_kb.py` (RAG retrieval over `assets/experience.json`, used by the email writer).
+- **`src/digest/`** — the daily half: `daily_workflow.py` is THE entry point
+  (`python -m src.digest.daily_workflow`); it uses `jobs.h1b_greenhouse` to fetch,
+  `ranking.fit_ranker` to score, `jobs_site.py` to build the site, `daily_job_email.py` to email the top 10.
+- **`src/outreach/`** — the cold-email half: `outreach.py` / `outreach_server.py` with
+  `prospeo_lookup.py`, `email_generator.py` (grounds emails via `ranking.resume_kb`),
+  `sheets_logger.py`, `bounce_retry.py`.
+
+Run any module as `python -m src.<pkg>.<module>`. Occasional maintenance script:
+`scripts/import_lca_wages.py` (DOL wage refresh). Imports are absolute (`from src.core import config`).

@@ -19,8 +19,8 @@ import json
 import re
 from pathlib import Path
 
-import config
-import h1b_db
+from src.core import config
+from src.core import h1b_db
 
 _SUFFIX = re.compile(r"\b(INC|LLC|LLP|LP|LTD|CORP|CORPORATION|CO|COMPANY|PC|PLLC|"
                      r"THE|USA|US|NA|NORTH AMERICA)\b")

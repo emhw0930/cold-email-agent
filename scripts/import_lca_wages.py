@@ -3,7 +3,7 @@
 #  import_lca_wages.py  (run occasionally, not part of the daily flow)
 #  Loads certified H-1B wages from one or more DOL OFLC "LCA Disclosure
 #  Data" spreadsheets into the employer_wages table, then anyone can run
-#  `python src/company_lookup.py` to rebuild docs/employers.json.
+#  `python -m src.jobs.company_lookup` to rebuild docs/employers.json.
 #
 #  Get the .xlsx files (one per fiscal year) from:
 #    https://www.dol.gov/agencies/eta/foreign-labor/performance
@@ -23,10 +23,11 @@
 import sys, statistics, sqlite3, time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+# Run from the repo root as: python scripts/import_lca_wages.py
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import openpyxl
-import h1b_db
-from company_lookup import norm   # single source of truth for name normalization
+from src.core import h1b_db
+from src.jobs.company_lookup import norm   # single source of truth for name normalization
 
 MULT = {"Year": 1, "Hour": 2080, "Week": 52, "Bi-Weekly": 26, "Month": 12, "Day": 260}
 NEEDED = ("CASE_STATUS", "EMPLOYER_NAME", "EMPLOYER_STATE",
@@ -86,7 +87,7 @@ def main(paths: list[str]) -> None:
     conn.commit()
     conn.close()
     print(f"Stored {len(rows)} employer wage rows in {time.time()-t0:.0f}s. "
-          f"Now run: python src/company_lookup.py")
+          f"Now run: python -m src.jobs.company_lookup")
 
 
 if __name__ == "__main__":

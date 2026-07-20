@@ -93,7 +93,7 @@ publishes them all to the public site, and emails you the top 10 by résumé fit
 `.github/workflows/daily.yml` runs every day at 12:00 UTC (8 AM ET):
 
 1. Pull every current junior SWE role from the cached sponsor boards
-   (Greenhouse / Lever / Ashby / Workday)
+   (Greenhouse / Lever / Ashby / SmartRecruiters / Workable / Workday)
 2. Regenerate the **public site** ([docs/index.html](docs/index.html) →
    https://emhw0930.github.io/cold-email-agent/) with ALL of them
 3. Drop anything already emailed in a past digest (dedup state lives in
@@ -174,6 +174,35 @@ python -m src.outreach.outreach_server
 
 ---
 
+## Part 3 — MCP server (optional)
+
+Exposes the agent as typed [MCP](https://modelcontextprotocol.io) tools so any MCP
+client (Claude Desktop, Claude Code) can query it directly in a chat — no terminal:
+
+| Tool | What it does |
+|------|--------------|
+| `search_jobs(keyword, min_fit, new_only)` | Search the daily-ranked sponsor job pool |
+| `top_matches(n)` | Top-N roles by résumé fit |
+| `company_h1b_lookup(name)` | A company's H-1B approvals + certified wage percentiles |
+| `retrieve_experience(jd_text)` | RAG: résumé bullets most relevant to a JD |
+
+All four are **read-only**. (Draft/send tools are intentionally left out of the default
+server so no client can send email without the review flow.) Run it on stdio:
+
+```bash
+python -m src.mcp.server                              # (needs: pip install mcp)
+```
+
+Register with Claude Code:
+```bash
+claude mcp add h1b-agent -- /ABS/PATH/venv/bin/python -m src.mcp.server
+```
+Then ask, in any chat: *"Does Verkada sponsor H-1B and what do they pay?"* or
+*"show my top matches."* The server reads the same local DBs the daily pipeline
+maintains, so it's always current.
+
+---
+
 ## Project structure
 
 `src/` is a Python package split into five subpackages by responsibility. Data flows
@@ -210,7 +239,7 @@ h1b-job-agent/
     │   ├── h1b_db.py        ← USCIS H-1B CSV → SQLite, ranked by new approvals
     │   └── gmail_sender.py  ← Gmail send: SMTP app-password or OAuth + attachments
     ├── jobs/              ← sourcing sponsor roles
-    │   ├── ats.py           ← Greenhouse/Lever/Ashby/Workday board readers
+    │   ├── ats.py           ← Greenhouse/Lever/Ashby/SmartRecruiters/Workable/Workday readers
     │   ├── h1b_greenhouse.py← board resolver, fresh-role puller, emailed-dedup
     │   └── company_lookup.py← builds docs/employers.json (H-1B + salary data)
     ├── ranking/           ← résumé fit + retrieval
@@ -220,13 +249,15 @@ h1b-job-agent/
     │   ├── daily_workflow.py← THE daily entry point: site + rank + email top 10
     │   ├── jobs_site.py     ← generates the public site (docs/index.html)
     │   └── daily_job_email.py← builds + emails the HTML top-10 digest
-    └── outreach/          ← the cold-email half (interactive)
-        ├── outreach.py      ← targeted, human-in-the-loop CLI  (start here)
-        ├── outreach_server.py← local review server behind the digest's outreach button
-        ├── prospeo_lookup.py← recruiter search + verified-email reveal
-        ├── email_generator.py← Gemini emails, grounded in ranking.resume_kb (template fallback)
-        ├── sheets_logger.py ← Google Sheets logging + dedup
-        └── bounce_retry.py  ← detects bounced sends, retries alternate address patterns
+    ├── outreach/          ← the cold-email half (interactive)
+    │   ├── outreach.py      ← targeted, human-in-the-loop CLI  (start here)
+    │   ├── outreach_server.py← local review server behind the digest's outreach button
+    │   ├── prospeo_lookup.py← recruiter search + verified-email reveal
+    │   ├── email_generator.py← Gemini emails, grounded in ranking.resume_kb (template fallback)
+    │   ├── sheets_logger.py ← Google Sheets logging + dedup
+    │   └── bounce_retry.py  ← detects bounced sends, retries alternate address patterns
+    └── mcp/               ← optional MCP server (read-only tools over the pipeline)
+        └── server.py       ← search_jobs · top_matches · company_h1b_lookup · retrieve_experience
 ```
 
 Run any module as `python -m src.<pkg>.<module>` (e.g. `python -m src.digest.daily_workflow`).
@@ -243,9 +274,9 @@ Everything lives in `.env` (loaded by `src/core/config.py`); see `.env.example` 
 |----------|-----------|
 | `GEMINI_API_KEY` | Google AI Studio key — the only LLM (free tier). Writes outreach emails **and** ranks daily fit. Without it, ranking uses the keyword scorer and outreach uses a template |
 | `GMAIL_APP_PASSWORD` | *Optional* — Gmail App Password; sends via SMTP (headless, used by the Action). Unset = browser OAuth |
-| `PROSPEO_API_KEY` | Prospeo key (recruiter email lookup) |
+| `PROSPEO_API_KEY` | *Optional* — Prospeo key for verified recruiter lookup; empty = pattern-guessing only |
 | `SENDER_EMAIL` | Gmail address you send from |
-| `SHEETS_SPREADSHEET_ID` | Target Google Sheet ID |
+| `SHEETS_SPREADSHEET_ID` | *Optional* — Sheet ID for the outreach log; empty = no log/sheet dedup |
 | `YOUR_NAME` / `YOUR_PHONE` / `YOUR_LINKEDIN` | Signature fields |
 | `YOUR_EMAIL_PRIMARY` / `YOUR_EMAIL_ALT` | Emails shown in the signature |
 | `GEMINI_MODEL` | Gemini model for ranking + emails (default `gemini-2.5-flash-lite`) |
@@ -292,7 +323,7 @@ crontab -e
 - **Prospeo free tier** ≈ 75 credits/month. Prefer *verified* emails; guessed/pattern
   addresses can bounce. See [docs/AGENT.md](docs/AGENT.md) for the one-reveal-then-pattern strategy.
 - **Gmail free tier** allows 500 sends/day.
-- ATS board mapping is slug-guess + probe; Greenhouse is name-verified, Lever/Ashby are
+- ATS board mapping is slug-guess + probe; Greenhouse/SmartRecruiters/Workable are name-verified, Lever/Ashby are
   verified by slug strength since they expose no company name.
 - This sends real email to real people — keep it targeted and personalized.
 ```

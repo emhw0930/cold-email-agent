@@ -15,3 +15,6 @@ tenacity>=8.2.0
 
 # Only for scripts/import_lca_wages.py (occasional DOL wage refresh; not the daily flow)
 openpyxl>=3.1.0
+
+# Only for the optional MCP server (src/mcp/server.py); not needed by the daily flow
+mcp>=1.28.0

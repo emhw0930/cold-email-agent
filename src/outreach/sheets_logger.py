@@ -36,6 +36,21 @@ SCOPES = [
 ]
 
 _sheet: Optional[gspread.Worksheet] = None
+_warned = False
+
+
+def sheets_available() -> bool:
+    """Sheets logging is configured only when both the spreadsheet ID and the
+    service-account file exist. Optional: without them, sends still work — the
+    log and its recipient-dedup are skipped (with a one-time warning)."""
+    global _warned
+    from pathlib import Path
+    ok = bool(config.SHEETS_SPREADSHEET_ID) and Path(config.SHEETS_SERVICE_ACCOUNT_PATH).exists()
+    if not ok and not _warned:
+        print("  ⚠ Google Sheets not configured — skipping outreach log & sheet dedup "
+              "(set SHEETS_SPREADSHEET_ID + service account JSON to enable)")
+        _warned = True
+    return ok
 
 
 def _get_sheet() -> gspread.Worksheet:
@@ -83,6 +98,8 @@ def already_contacted(company: str, job_title: str) -> bool:
     Return True if we've already sent an email for this
     (company, job_title) combination — avoids duplicate sends.
     """
+    if not sheets_available():
+        return False
     ws = _get_sheet()
     all_rows = ws.get_all_values()
 
@@ -109,7 +126,7 @@ def already_emailed(recruiter_email: str) -> bool:
     Recipient-based dedup — lets you contact multiple people for the same role
     without being blocked, while still preventing emailing the same person twice.
     """
-    if not recruiter_email:
+    if not recruiter_email or not sheets_available():
         return False
     ws = _get_sheet()
     all_rows = ws.get_all_values()
@@ -136,6 +153,8 @@ def log_outreach(
     outreach  — from email_generator.py (subject, body)
     status    — default "Sent"
     """
+    if not sheets_available():
+        return
     ws = _get_sheet()
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     h1b_label = "explicit mention" if job.get("h1b_signal") == 2 else "known sponsor"
@@ -164,6 +183,8 @@ def update_status(recruiter_email: str, new_status: str) -> bool:
     Find a row by recruiter email and update its status column.
     Useful for marking replies manually or via webhook.
     """
+    if not sheets_available():
+        return False
     ws = _get_sheet()
     all_rows = ws.get_all_values()
 
@@ -179,6 +200,8 @@ def update_status(recruiter_email: str, new_status: str) -> bool:
 
 def get_all_applications() -> list[dict]:
     """Return all logged applications as a list of dicts."""
+    if not sheets_available():
+        return []
     ws = _get_sheet()
     all_rows = ws.get_all_values()
     if len(all_rows) <= 1:

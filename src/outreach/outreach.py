@@ -35,8 +35,18 @@ from src.outreach.sheets_logger import already_emailed, log_outreach
 def find_verified_recruiters(company_domain: str, max_people: int,
                              allow_unverified: bool = False) -> list[dict]:
     """Search + reveal recruiter emails. Returns recruiters with usable emails."""
+    if not config.PROSPEO_API_KEY:
+        print("\n⚠ PROSPEO_API_KEY not set — verified recruiter lookup unavailable.\n"
+              "  Find recruiter names yourself (e.g. LinkedIn) and use the review\n"
+              "  server (python -m src.outreach.outreach_server) or ask your AI\n"
+              "  assistant to build pattern-guessed addresses.")
+        return []
     print(f"\n▶ Searching US recruiters at {company_domain} ...")
-    people = _search_recruiters(company_domain, us_only=True)
+    try:
+        people = _search_recruiters(company_domain, us_only=True)
+    except Exception as e:
+        print(f"  ⚠ Prospeo lookup failed ({e}) — check the key / credits.")
+        return []
     if not people:
         print("  ⚠ No recruiters found.")
         return []

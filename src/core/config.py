@@ -49,7 +49,10 @@ def _optional(name: str, default: str = "") -> str:
 
 
 # ── Secrets (from .env) ───────────────────────────────────────
-PROSPEO_API_KEY = _require("PROSPEO_API_KEY")
+# Prospeo (verified recruiter-email lookup) — OPTIONAL. Without it, outreach
+# falls back to showing no verified contacts; recruiter emails can still be
+# pattern-guessed manually. Only the outreach half ever uses it.
+PROSPEO_API_KEY = _optional("PROSPEO_API_KEY")
 
 # Google Gemini key (aistudio.google.com) — the project's only LLM, on the
 # FREE tier. Powers both the daily fit-ranking and the cold-email writer.
@@ -68,8 +71,10 @@ SENDER_EMAIL = _require("SENDER_EMAIL")
 GMAIL_APP_PASSWORD = _optional("GMAIL_APP_PASSWORD").replace(" ", "")
 
 # ── Google Sheets ────────────────────────────────────────────
+# Google Sheets outreach log — OPTIONAL. Without it, sends still work; you just
+# lose the spreadsheet log and its recipient dedup (a warning is printed).
 SHEETS_SERVICE_ACCOUNT_PATH = _abspath(_optional("SHEETS_SERVICE_ACCOUNT_PATH", "assets/sheets_service_account.json"))
-SHEETS_SPREADSHEET_ID = _require("SHEETS_SPREADSHEET_ID")
+SHEETS_SPREADSHEET_ID = _optional("SHEETS_SPREADSHEET_ID")
 SHEETS_WORKSHEET_NAME = _optional("SHEETS_WORKSHEET_NAME", "Applications")
 
 # Optional Apps Script web-app URL that logs a card click to the "Job" sheet

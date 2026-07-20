@@ -311,7 +311,7 @@ _PAGE = """<!DOCTYPE html>
   <div class="eyebrow">H-1B sponsor job board · updated __DATE__</div>
   <h1>Fresh SWE roles, <span class="accent">every day</span></h1>
   <p class="sub">Entry-level &amp; early-career software engineer roles pulled from the
-    public boards of verified H-1B sponsors — Greenhouse, Lever, Ashby &amp; Workday. US-only.</p>
+    public boards of verified H-1B sponsors — Greenhouse, Lever, Ashby, SmartRecruiters, Workable &amp; Workday. US-only.</p>
   <div class="stats" id="stats"></div>
 
   <div class="tracker-bar">

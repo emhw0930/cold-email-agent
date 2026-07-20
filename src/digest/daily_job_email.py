@@ -62,6 +62,7 @@ def _card_link(job: dict) -> str:
 
 # A calm, distinct color per ATS / source badge.
 _ATS_COLOR = {"greenhouse": "#1a7f5a", "lever": "#5a4fcf", "ashby": "#b4531f",
+              "smartrecruiters": "#0a6ed1", "workable": "#00756a",
               "amazon": "#c45500", "linkedin": "#0a66c2", "indeed": "#2557a7"}
 # Monogram background palette (deterministic by first letter).
 _MONO = ["#e8f0fe", "#e6f4ea", "#fce8e6", "#fef7e0", "#f3e8fd", "#e0f7fa"]
@@ -241,7 +242,7 @@ def build_html(jobs: list[dict]) -> str:
               <div style="border-top:1px solid #eaecef;padding-top:14px;
                    font-size:11px;color:#9aa0a6;line-height:1.5">
                 Sent automatically by h1b-job-agent · watching {n_boards} sponsor boards
-                across Greenhouse, Lever, Ashby &amp; Workday. Big employers with their own
+                across Greenhouse, Lever, Ashby, SmartRecruiters, Workable &amp; Workday. Big employers with their own
                 boards (Amazon, Google, Microsoft, Apple, Tesla, Bloomberg, LinkedIn) are
                 linked above to browse directly.<br>
                 &ldquo;First seen&rdquo; is the date this tool first spotted the posting.

@@ -1,7 +1,8 @@
 # ============================================================
 #  h1b_greenhouse.py
 #  Bridge between the H-1B sponsor database and public ATS
-#  job boards (Greenhouse, Lever, Ashby — via src/jobs/ats.py).
+#  job boards (Greenhouse, Lever, Ashby, SmartRecruiters,
+#  Workable — via src/jobs/ats.py).
 #
 #  1. resolve_boards(): for the top-N sponsors, guess a board
 #     slug from the employer name and probe each ATS; cache the
@@ -273,11 +274,12 @@ def _names_match(employer: str, board_name: str) -> bool:
 def _resolve_one(employer: str):
     """Return (employer, ats, token) for the first provider that verifies, else (employer, None, None)."""
     for tok in candidate_tokens(employer):
-        # Greenhouse — verified by company name
-        if ats.fetch("greenhouse", tok):
-            name = ats.board_name("greenhouse", tok)
-            if name and _names_match(employer, name):
-                return employer, "greenhouse", tok
+        # Name-verified providers first — safe at any slug length
+        for prov in ("greenhouse", "smartrecruiters", "workable"):
+            if ats.fetch(prov, tok):
+                name = ats.board_name(prov, tok)
+                if name and _names_match(employer, name):
+                    return employer, prov, tok
         # Lever / Ashby — no name endpoint; require a strong slug (len >= 4)
         if len(tok) >= 4:
             for prov in ("lever", "ashby"):
@@ -315,6 +317,48 @@ def resolve_boards(n: int = 500, by: str = "new_approval",
     total = conn.execute("SELECT COUNT(*) FROM greenhouse_boards WHERE valid = 1").fetchone()[0]
     conn.close()
     return {"checked": len(todo), "found": len(found), "total_valid": total, "boards": found}
+
+
+def reprobe_invalid(providers: list[str], db_path: str = h1b_db.DB_PATH) -> dict:
+    """Re-check employers previously marked board-less, against SPECIFIC providers.
+
+    resolve_boards() skips anything already probed (valid or not), so when a new
+    ATS reader is added, the employers checked before it existed never see it.
+    This targets exactly those rows. Only name-verifiable providers make sense
+    here (greenhouse / smartrecruiters / workable) — blind slug hits on
+    Lever/Ashby would re-add the false-positive risk.
+    """
+    conn = h1b_db.connect(db_path)
+    _ensure_schema(conn)
+    todo = [r["employer"] for r in conn.execute(
+        "SELECT employer FROM greenhouse_boards WHERE valid = 0")]
+    now = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+
+    def _try(employer: str):
+        for tok in candidate_tokens(employer):
+            for prov in providers:
+                if ats.fetch(prov, tok):
+                    name = ats.board_name(prov, tok)
+                    if name and _names_match(employer, name):
+                        return employer, prov, tok
+        return employer, None, None
+
+    found = []
+    done = 0
+    with ThreadPoolExecutor(max_workers=16) as ex:
+        for emp, prov, tok in ex.map(_try, todo):
+            done += 1
+            if tok:
+                conn.execute(
+                    "UPDATE greenhouse_boards SET board_token=?, ats=?, valid=1, checked_at=? "
+                    "WHERE employer=?", (tok, prov, now, emp))
+                found.append((emp, prov, tok))
+            if done % 250 == 0:
+                conn.commit()
+                print(f"  …{done}/{len(todo)} rechecked, {len(found)} new boards")
+    conn.commit()
+    conn.close()
+    return {"rechecked": len(todo), "found": len(found), "boards": found}
 
 
 def valid_boards(db_path: str = h1b_db.DB_PATH,
@@ -443,6 +487,9 @@ def daily_fresh_swe(us_only: bool = True, limit: int | None = None,
         for j in ats.fetch(prov, tok):
             if not ats.is_junior_swe(j["title"]):
                 continue
+            # Definitive ISO country code (SmartRecruiters) beats keyword matching
+            if us_only and j.get("country_code", "") not in ("", "us"):
+                continue
             if us_only and not ats.is_us(j["location"]):
                 continue
             j["new_grad"] = ats.is_explicit_junior(j["title"])  # tag explicit new-grad/I
@@ -487,14 +534,25 @@ if __name__ == "__main__":
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--jobs", action="store_true")
     ap.add_argument("--fresh", action="store_true", help="re-probe everything (clear cache)")
+    ap.add_argument("--reprobe-invalid", metavar="PROVIDERS",
+                    help="re-check board-less employers on these comma-separated "
+                         "name-verifiable providers (e.g. smartrecruiters,workable)")
     args = ap.parse_args()
+
+    if args.reprobe_invalid:
+        provs = [p.strip() for p in args.reprobe_invalid.split(",") if p.strip()]
+        print(f"Re-probing previously-invalid employers on: {', '.join(provs)}")
+        r = reprobe_invalid(provs)
+        print(f"\nRechecked {r['rechecked']}, found {r['found']} new boards.")
+        for emp, prov, tok in sorted(r["boards"], key=lambda x: (x[1], x[2])):
+            print(f"   {prov:<16} {tok:<24} <- {emp}")
 
     if args.fresh:
         c = h1b_db.connect(); c.execute("DELETE FROM greenhouse_boards"); c.commit(); c.close()
         print("cache cleared")
 
     if args.resolve:
-        print(f"Probing Greenhouse/Lever/Ashby for top {args.n} sponsors...")
+        print(f"Probing Greenhouse/SmartRecruiters/Workable/Lever/Ashby for top {args.n} sponsors...")
         r = resolve_boards(args.n)
         k = resolve_known()
         w = resolve_workday()

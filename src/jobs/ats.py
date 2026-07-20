@@ -1,8 +1,9 @@
 # ============================================================
 #  ats.py
-#  Unified reader for the three public ATS job-board APIs:
-#  Greenhouse, Lever, and Ashby. Each company hosts on ONE of
-#  them; none offers a global cross-company search, so we probe
+#  Unified reader for the public ATS job-board APIs: Greenhouse,
+#  Lever, Ashby, SmartRecruiters, Workable (+ curated Workday
+#  endpoints and Amazon's native board). Each company hosts on ONE
+#  of them; none offers a global cross-company search, so we probe
 #  a company slug against each provider.
 #
 #  Every provider is normalized to the same job dict:
@@ -212,6 +213,103 @@ def _ashby(slug: str) -> list[dict]:
     return _ashby_frontend(slug)
 
 
+# ── Provider: SmartRecruiters ─────────────────────────────────
+# Public postings API; country comes back as a 2-letter code, so map the
+# common ones to names the is_us() keyword filter understands.
+_SR_COUNTRY = {
+    "us": "US", "gb": "United Kingdom", "de": "Germany", "in": "India",
+    "ca": "Canada", "mx": "Mexico", "br": "Brazil", "ie": "Ireland",
+    "pt": "Portugal", "sg": "Singapore", "jp": "Japan", "au": "Australia",
+    "fr": "France", "nl": "Netherlands", "pl": "Poland", "es": "Spain",
+    "kr": "Korea", "tw": "Taiwan", "hk": "Hong Kong", "ph": "Philippines",
+    "vn": "Vietnam", "my": "Malaysia", "th": "Thailand", "id": "Indonesia",
+    "il": "Israel", "se": "Sweden", "dk": "Denmark", "no": "Norway",
+    "fi": "Finland", "it": "Italy", "ch": "Switzerland", "at": "Austria",
+    "be": "Belgium", "cz": "Czech", "ro": "Romania", "ua": "Ukraine",
+    "tr": "Turkey", "ae": "UAE", "sa": "Saudi", "qa": "Qatar",
+    "ar": "Argentina", "cl": "Chile", "co": "Colombia", "cr": "Costa Rica",
+    "nz": "New Zealand", "cn": "China",
+}
+
+
+def _smartrecruiters(slug: str) -> list[dict]:
+    base = f"https://api.smartrecruiters.com/v1/companies/{slug}/postings"
+    out, offset = [], 0
+    while offset < 500:
+        r = requests.get(base, params={"limit": 100, "offset": offset}, timeout=TIMEOUT)
+        if r.status_code != 200:
+            break
+        data = r.json() or {}
+        posts = data.get("content", []) or []
+        if not posts:
+            break
+        for p in posts:
+            loc = p.get("location") or {}
+            country = (loc.get("country") or "").lower()
+            parts = [loc.get("city", ""), loc.get("region", ""),
+                     _SR_COUNTRY.get(country, country.upper())]
+            out.append({
+                "company": slug, "ats": "smartrecruiters",
+                "title": p.get("name", ""),
+                "location": ", ".join(x for x in parts if x),
+                "url": f"https://jobs.smartrecruiters.com/{slug}/{p.get('id', '')}",
+                "updated_at": (p.get("releasedDate") or "")[:10],
+                "job_id": p.get("id"),
+                # SR exposes a definitive ISO country code — keep it so the US
+                # filter doesn't depend on keyword-matching the location string.
+                "country_code": country,
+            })
+        offset += 100
+        if offset >= (data.get("totalFound") or 0):
+            break
+    return out
+
+
+def _smartrecruiters_name(slug: str) -> str | None:
+    """SR has no company endpoint, but every posting embeds company.name."""
+    try:
+        r = requests.get(f"https://api.smartrecruiters.com/v1/companies/{slug}/postings",
+                         params={"limit": 1}, timeout=TIMEOUT)
+        if r.status_code != 200:
+            return None
+        content = (r.json() or {}).get("content") or []
+        return (content[0].get("company") or {}).get("name") if content else None
+    except Exception:
+        return None
+
+
+# ── Provider: Workable ────────────────────────────────────────
+# Public widget API: one GET returns the whole board (plus the company name,
+# so Workable boards are name-verifiable like Greenhouse).
+def _workable(slug: str) -> list[dict]:
+    r = requests.get(f"https://apply.workable.com/api/v1/widget/accounts/{slug}",
+                     timeout=TIMEOUT, headers={"User-Agent": _UA})
+    if r.status_code != 200:
+        return []
+    data = r.json() or {}
+    out = []
+    for j in data.get("jobs", []) or []:
+        parts = [j.get("city", ""), j.get("state", ""), j.get("country", "")]
+        out.append({
+            "company": slug, "ats": "workable",
+            "title": j.get("title", ""),
+            "location": ", ".join(x for x in parts if x),
+            "url": j.get("url") or f"https://apply.workable.com/{slug}/j/{j.get('shortcode', '')}/",
+            "updated_at": (j.get("published_on") or "")[:10],
+            "job_id": j.get("shortcode") or j.get("code"),
+        })
+    return out
+
+
+def _workable_name(slug: str) -> str | None:
+    try:
+        r = requests.get(f"https://apply.workable.com/api/v1/widget/accounts/{slug}",
+                         timeout=TIMEOUT, headers={"User-Agent": _UA})
+        return (r.json() or {}).get("name") if r.status_code == 200 else None
+    except Exception:
+        return None
+
+
 # ── Provider: Workday ─────────────────────────────────────────
 # Workday has no name search and every company has a unique
 # tenant/pod/site, so the "slug" here is a composite "tenant|pod|site".
@@ -300,7 +398,8 @@ def _amazon(slug: str = "amazon") -> list[dict]:
 
 
 _PROVIDERS = {"greenhouse": _greenhouse, "lever": _lever,
-              "ashby": _ashby, "workday": _workday, "amazon": _amazon}
+              "ashby": _ashby, "workday": _workday, "amazon": _amazon,
+              "smartrecruiters": _smartrecruiters, "workable": _workable}
 
 
 def fetch(provider: str, slug: str) -> list[dict]:
@@ -312,10 +411,15 @@ def fetch(provider: str, slug: str) -> list[dict]:
 
 
 def board_name(provider: str, slug: str) -> str | None:
-    """Company name for verification. Only Greenhouse exposes one."""
+    """Company name for verification (Greenhouse/SmartRecruiters/Workable
+    expose one; Lever/Ashby don't — those are verified by slug strength)."""
     if provider == "greenhouse":
         return _greenhouse_name(slug)
-    return None  # Lever/Ashby have no name endpoint — verified by slug strength
+    if provider == "smartrecruiters":
+        return _smartrecruiters_name(slug)
+    if provider == "workable":
+        return _workable_name(slug)
+    return None
 
 
 # ── Job description (on-demand; for sponsorship check + fit ranking) ──
@@ -375,6 +479,24 @@ def description(job: dict) -> str:
             if r.status_code == 200:
                 info = (r.json() or {}).get("jobPostingInfo") or {}
                 return _strip_html(info.get("jobDescription", ""))
+        if prov == "smartrecruiters":
+            r = requests.get(
+                f"https://api.smartrecruiters.com/v1/companies/{slug}/postings/{jid}",
+                timeout=TIMEOUT)
+            if r.status_code == 200:
+                sections = ((r.json() or {}).get("jobAd") or {}).get("sections") or {}
+                return "\n".join(
+                    _strip_html(s.get("text", ""))
+                    for s in sections.values() if isinstance(s, dict) and s.get("text"))
+        if prov == "workable":
+            r = requests.get(
+                f"https://apply.workable.com/api/v2/accounts/{slug}/jobs/{jid}",
+                timeout=TIMEOUT, headers={"User-Agent": _UA})
+            if r.status_code == 200:
+                p = r.json() or {}
+                return "\n".join(_strip_html(p.get(k, ""))
+                                 for k in ("description", "requirements", "benefits")
+                                 if p.get(k))
     except Exception:
         pass
     return ""

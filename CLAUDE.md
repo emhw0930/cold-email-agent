@@ -12,6 +12,15 @@ your playbook: read it, then help the user set it up and operate it.
 2. **Cold-email outreach** — for a company the user applied to, finds recruiters/hiring
    managers, drafts a tailored email each (résumé attached), previews, sends, and logs.
 
+   **Default when the user pastes a JD (or job link):** run the full prep automatically —
+   (a) **do NOT check sponsorship** — per the owner's instruction, a pasted JD already meets
+   their sponsorship needs, so skip `company_h1b_lookup`/research (only flag if the JD text
+   itself explicitly says it will not sponsor); (b) find the company **email pattern**;
+   (c) surface **~10 real recruiters** (prefer technical / early-career; never invent names);
+   (d) find **a few highly-matched hiring managers** on the *specific* team (skip too-senior
+   VPs); (e) draft RAG-grounded emails (recruiter + hiring-manager versions), then **show
+   every draft for approval before sending**.
+
 ## 🔒 The one rule you must never break: H-1B sponsors only
 
 The user's whole reason for this tool is that they need sponsorship. **Every role must come
@@ -93,7 +102,11 @@ mechanical engineer"), their **résumé**, and the **email address** for the dig
   `ranking.fit_ranker` to score, `jobs_site.py` to build the site, `daily_job_email.py` to email the top 10.
 - **`src/outreach/`** — the cold-email half: `outreach.py` / `outreach_server.py` with
   `prospeo_lookup.py`, `email_generator.py` (grounds emails via `ranking.resume_kb`),
-  `sheets_logger.py`, `bounce_retry.py`.
+  `sheets_logger.py`, `bounce_retry.py` (send log + bounce retry), `reply_tracker.py`
+  (IMAP reply detection + classification → `reply_status`), and `applications.py`
+  (job-application tracker → private `data/applications.db`, imported from a Sheets export).
+- **`src/mcp/`** — `server.py` (18 FastMCP tools over the packages above) + `audit.py`
+  (logs every tool call to private `data/agent_log.db`).
 
 Run any module as `python -m src.<pkg>.<module>`. Occasional maintenance script:
 `scripts/import_lca_wages.py` (DOL wage refresh). Imports are absolute (`from src.core import config`).

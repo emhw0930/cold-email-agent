@@ -179,27 +179,52 @@ python -m src.outreach.outreach_server
 Exposes the agent as typed [MCP](https://modelcontextprotocol.io) tools so any MCP
 client (Claude Desktop, Claude Code) can query it directly in a chat — no terminal:
 
-| Tool | What it does |
-|------|--------------|
-| `search_jobs(keyword, min_fit, new_only)` | Search the daily-ranked sponsor job pool |
-| `top_matches(n)` | Top-N roles by résumé fit |
-| `company_h1b_lookup(name)` | A company's H-1B approvals + certified wage percentiles |
-| `retrieve_experience(jd_text)` | RAG: résumé bullets most relevant to a JD |
+| Tool | Tier | What it does |
+|------|------|--------------|
+| `search_jobs(keyword, min_fit, new_only)` | read | Search the daily-ranked sponsor job pool |
+| `top_matches(n)` | read | Top-N roles by résumé fit |
+| `company_h1b_lookup(name)` | read | A company's H-1B approvals + certified wage percentiles |
+| `retrieve_experience(jd_text)` | read | RAG: résumé bullets most relevant to a JD |
+| `sent_outreach(company, status)` | read | Cold emails you've already sent (who, status, bounces) |
+| `draft_cold_email(company, title, jd_text, recruiter_name)` | draft | RAG-grounded recruiter email (subject + body) — **returns text only** |
+| `guess_recruiter_emails(first, last, domain)` | draft | Likely email addresses for a name, best-pattern first |
+| `prospeo_lookup(company_name, domain)` | draft | A recruiter + **verified** email via Prospeo (optional key; falls back to guessing) |
+| `send_batch(drafts, confirm)` | **send** | Sends a whole batch of reviewed emails in ONE call (résumé attached) + logs each — **no-op unless `confirm=True`**, so one approval covers all recipients |
+| `check_bounces(since_days)` | send | Read-only: which sent addresses bounced (IMAP), matched to the send log |
+| `retry_bounced_emails(confirm, …)` | send | Resend bounced emails with the next address pattern — **no-op unless `confirm=True`** |
+| `recent_actions(tool, ok_only)` | log | Read the agent's own action log — every tool call, newest first |
+| `check_replies(since_days)` | reply | Scan inbox for human replies, classify (interview/rejected/replied), update the send log |
+| `needs_followup(days)` | reply | Delivered + no-reply + aged — your follow-up candidates |
+| `outreach_stats()` | reply | Response funnel per company: sent → replied → interview/rejected + rate % |
+| `record_application(company, role, jd_text, …)` | apps | Log a job application (stores the full JD) to `applications.db` |
+| `list_applications(company, outcome, stage)` | apps | Query tracked applications, newest first |
+| `application_stats()` | apps | Application funnel: applied → cold_email → phone_screen → oa → rounds |
 
-All four are **read-only**. (Draft/send tools are intentionally left out of the default
-server so no client can send email without the review flow.) Run it on stdio:
+**Safety model — the server can't send by *accident*.** Send is a *separate* tool from
+draft (you pass reviewed bodies — no draft-and-send in one call); `send_batch` takes the
+whole batch in one call so a single approval covers all recipients; and every send/retry
+tool **no-ops unless `confirm=True`**, returning a dry-run preview otherwise. A human
+reviews every message before `confirm=True`. Run it on stdio:
 
 ```bash
 python -m src.mcp.server                              # (needs: pip install mcp)
 ```
 
-Register with Claude Code:
+Register with **Claude Code**:
 ```bash
-claude mcp add h1b-agent -- /ABS/PATH/venv/bin/python -m src.mcp.server
+claude mcp add h1b-agent -- \
+  bash -c "cd /ABS/PATH/h1b-job-agent && exec ./venv/bin/python -m src.mcp.server"
 ```
+…or with **Claude Desktop** — add an `mcpServers` entry to
+`~/Library/Application Support/Claude/claude_desktop_config.json` (see
+[docs/MCP.md](docs/MCP.md#register-with-a-client)).
+
 Then ask, in any chat: *"Does Verkada sponsor H-1B and what do they pay?"* or
 *"show my top matches."* The server reads the same local DBs the daily pipeline
 maintains, so it's always current.
+
+**Full tool contract, I/O examples, and design notes:** [docs/MCP.md](docs/MCP.md).
+Tests: `python -m unittest tests.test_mcp_lookup`.
 
 ---
 
@@ -256,8 +281,9 @@ h1b-job-agent/
     │   ├── email_generator.py← Gemini emails, grounded in ranking.resume_kb (template fallback)
     │   ├── sheets_logger.py ← Google Sheets logging + dedup
     │   └── bounce_retry.py  ← detects bounced sends, retries alternate address patterns
-    └── mcp/               ← optional MCP server (read-only tools over the pipeline)
-        └── server.py       ← search_jobs · top_matches · company_h1b_lookup · retrieve_experience
+    └── mcp/               ← optional MCP server (read + draft tools over the pipeline)
+        └── server.py       ← search_jobs · top_matches · company_h1b_lookup ·
+                              retrieve_experience · draft_cold_email · guess_recruiter_emails
 ```
 
 Run any module as `python -m src.<pkg>.<module>` (e.g. `python -m src.digest.daily_workflow`).

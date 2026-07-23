@@ -1,16 +1,18 @@
 # ── Secrets & credentials (NEVER commit) ──────────────────────
 .env
-assets/gmail_credentials.json
-assets/gmail_token.json
-assets/sheets_service_account.json
+.env.*
+!.env.example
+# ALL JSON under assets/ (service account keys, OAuth tokens, experience corpus)…
 assets/*.json
 # …but DO ship the retrieval-corpus template so forkers see the schema:
 !assets/experience.example.json
 
-# ── Personal documents ────────────────────────────────────────
-assets/resume.pdf
-assets/resume.txt
-assets/cover_letter.pdf
+# ── Personal documents (résumé, cover letter, ANY backups) ────
+# Ignore every PDF/text/LaTeX résumé source in assets — including dated backups
+# like resume_backup_YYYYMMDD.pdf — so personal docs are never public.
+assets/*.pdf
+assets/*.txt
+assets/*.docx
 
 # ── Python ────────────────────────────────────────────────────
 venv/
@@ -24,16 +26,13 @@ __pycache__/
 logs/
 *.log
 
-# data/h1b_employers.db IS committed on purpose (public USCIS-derived data):
-# GitHub Actions runners are ephemeral and need the board cache and the
-# emailed/seen dedup state that live inside it.
-
-# Outreach retry state (PRIVATE: recruiter targets + email bodies) — never commit
-data/outreach_state.db
-
-# Résumé retrieval knowledge base (PRIVATE: résumé bullet text + embeddings) —
-# rebuilt locally from assets/experience.json via `python src/resume_kb.py --build`
-data/resume_kb.db
+# ── Databases (PRIVATE by default) ────────────────────────────
+# Ignore ALL local DBs so personal data can never leak — outreach_state,
+# resume_kb, agent_log, applications, and any future .db added later.
+data/*.db
+# …EXCEPT the public USCIS-derived employer DB, committed on purpose so the
+# GitHub Action has the board cache + emailed/seen dedup state (ephemeral runners).
+!data/h1b_employers.db
 
 # ── OS / editor ───────────────────────────────────────────────
 .DS_Store

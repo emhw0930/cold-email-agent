@@ -15,7 +15,10 @@ your playbook: read it, then help the user set it up and operate it.
    **Default when the user pastes a JD (or job link):** run the full prep automatically —
    (a) **do NOT check sponsorship** — per the owner's instruction, a pasted JD already meets
    their sponsorship needs, so skip `company_h1b_lookup`/research (only flag if the JD text
-   itself explicitly says it will not sponsor); (b) find the company **email pattern**;
+   itself explicitly says it will not sponsor); (b) find the company **email pattern**
+   — **use `guess_recruiter_emails` (pattern-guessing from a name + the domain pattern seen
+   online) by default; only call `prospeo_lookup` when the user explicitly asks for it**, since
+   it costs Prospeo credits;
    (c) surface **~10 real recruiters** (prefer technical / early-career; never invent names);
    (d) find **a few highly-matched hiring managers** on the *specific* team (skip too-senior
    VPs); (e) draft RAG-grounded emails (recruiter + hiring-manager versions), then **show

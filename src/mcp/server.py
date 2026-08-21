@@ -632,6 +632,17 @@ def refresh_applications_sheet() -> dict:
     return applications.export_to_sheet()
 
 
+@audited_tool()
+def refresh_cold_emails_sheet() -> dict:
+    """Push the cold-email send log (outreach_state.db) to its Google Sheet tab
+    ('Cold Emails'), newest-sent first — name, company, email, status,
+    reply_status, attempts, subject, sent-at. Use after a send batch or a
+    check_replies run. No-op if Sheets isn't configured. Returns {written, url}.
+    """
+    from src.outreach.bounce_retry import export_to_sheet as _export_outreach
+    return _export_outreach()
+
+
 # ── Observability: read the agent's own action log ───────────
 @audited_tool()
 def recent_actions(tool: str = "", ok_only: bool = False,

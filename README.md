@@ -89,6 +89,7 @@ list. The variables the server uses:
 | Variable | What it is |
 |----------|-----------|
 | `GEMINI_API_KEY` | Google AI Studio key (free tier) — the LLM behind `draft_cold_email` and résumé retrieval. Without it, drafting falls back to a template |
+| `ANTHROPIC_API_KEY` | *Optional, paid* — when set, `draft_cold_email` uses **Claude** instead of Gemini (Gemini stays the fallback). `ANTHROPIC_MODEL` defaults to `claude-opus-5`; set `claude-haiku-4-5` for lowest cost |
 | `PROSPEO_API_KEY` | *Optional* — Prospeo key for verified recruiter lookup; empty = pattern-guessing only |
 | `SENDER_EMAIL` | Gmail address you send from |
 | `GMAIL_APP_PASSWORD` | *Optional* — Gmail App Password; sends via SMTP (headless). Unset = browser OAuth |

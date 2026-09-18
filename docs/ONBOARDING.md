@@ -48,6 +48,7 @@ You can leave everything blank for now. The file just needs to exist. What each 
 |-----|---------|--------|
 | *(none)* | **Company H-1B lookup + job search** — works out of the box | — |
 | `GEMINI_API_KEY` | **Drafting** cold emails (and better résumé retrieval) | aistudio.google.com — free |
+| `ANTHROPIC_API_KEY` | **Drafting** with **Claude** instead of Gemini (optional, paid; set `ANTHROPIC_MODEL=claude-haiku-4-5` for lowest cost) | console.anthropic.com |
 | `PROSPEO_API_KEY` | **Verified** recruiter emails (instead of guessed) | prospeo.io — optional |
 | `SENDER_EMAIL` + `GMAIL_APP_PASSWORD` | Actually **sending** email | myaccount.google.com → Security → App passwords (needs 2-Step Verification) |
 

@@ -41,6 +41,8 @@ data/*.db
 
 # Claude Code local settings
 .claude/
+# Local MCP registration (hardcodes an absolute path — machine-specific)
+.mcp.json
 
 # Resume source files (personal info)
 *.tex

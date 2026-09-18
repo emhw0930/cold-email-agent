@@ -19,3 +19,6 @@ openpyxl>=3.1.0
 # Only for the optional MCP server (src/mcp/server.py); not needed by the daily flow.
 # Pinned <2: the server uses the v1 API (mcp.server.fastmcp.FastMCP), renamed in mcp 2.x.
 mcp>=1.28.0,<2
+
+# Optional: cold-email writer uses Claude when ANTHROPIC_API_KEY is set (else Gemini).
+anthropic>=0.40

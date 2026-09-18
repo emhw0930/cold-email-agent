@@ -61,6 +61,14 @@ PROSPEO_API_KEY = _optional("PROSPEO_API_KEY")
 GEMINI_API_KEY = _optional("GEMINI_API_KEY")
 GEMINI_MODEL = _optional("GEMINI_MODEL", "gemini-2.5-flash-lite")
 
+# Anthropic / Claude key (console.anthropic.com) — OPTIONAL, PAID. When set, the
+# cold-email writer uses Claude instead of Gemini (Gemini stays the free fallback,
+# and a plain template is the last resort). Ranking + RAG embeddings always use
+# Gemini. Default model is Opus; set ANTHROPIC_MODEL=claude-haiku-4-5 for the
+# cheapest option.
+ANTHROPIC_API_KEY = _optional("ANTHROPIC_API_KEY")
+ANTHROPIC_MODEL = _optional("ANTHROPIC_MODEL", "claude-opus-5")
+
 # ── Gmail OAuth ──────────────────────────────────────────────
 GMAIL_CREDENTIALS_PATH = _abspath(_optional("GMAIL_CREDENTIALS_PATH", "assets/gmail_credentials.json"))
 GMAIL_TOKEN_PATH = _abspath(_optional("GMAIL_TOKEN_PATH", "assets/gmail_token.json"))

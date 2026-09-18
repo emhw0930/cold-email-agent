@@ -1,10 +1,14 @@
 # ============================================================
 #  gemini.py
-#  Thin client for Google's Gemini API (free tier). Shared by the
-#  fit ranker (bulk role scoring) and the cold-email generator, so
-#  the whole project runs on one free LLM — no paid API.
+#  Thin LLM client. Shared by the fit ranker (bulk role scoring) and
+#  the cold-email generator.
 #
-#  Handles the three things every Gemini call in this repo needs:
+#  Text generation (generate()) prefers Claude when ANTHROPIC_API_KEY is
+#  set (paid), and otherwise uses Google's Gemini free tier; callers fall
+#  back to a plain template when neither is available. Embeddings (embed(),
+#  for RAG) are Gemini-only.
+#
+#  The Gemini path handles the three things every free-tier call needs:
 #    - a model fallback chain: when one model's DAILY free-tier quota
 #      is spent, roll to the next model's separate daily bucket
 #    - RPM throttling: calls spaced a few seconds apart
@@ -61,16 +65,54 @@ def _quota_is_daily(resp) -> bool:
     return False
 
 
+_anthropic_client = None
+
+
+def _get_anthropic_client():
+    """Lazily build the Anthropic SDK client (imported only when a key is set)."""
+    global _anthropic_client
+    if _anthropic_client is None:
+        import anthropic  # optional dependency — only needed on the Claude path
+        _anthropic_client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
+    return _anthropic_client
+
+
+def _anthropic_generate(prompt: str, *, system: str, max_output_tokens: int) -> str:
+    """A single Claude completion via the Anthropic Messages API."""
+    kwargs = {
+        "model": config.ANTHROPIC_MODEL,
+        "max_tokens": max_output_tokens,
+        "messages": [{"role": "user", "content": prompt}],
+    }
+    if system:
+        kwargs["system"] = system
+    resp = _get_anthropic_client().messages.create(**kwargs)
+    return "".join(b.text for b in resp.content if b.type == "text").strip()
+
+
 def generate(prompt: str, *, system: str = "", max_output_tokens: int = 500,
              temperature: float = 0.1) -> str:
-    """Return the text of a single Gemini completion.
+    """Return the text of a single LLM completion.
 
-    Rolls through the model fallback chain on daily-quota 429s and retries
-    once on a per-minute 429. Raises GeminiUnavailable when nothing can serve
-    the request.
+    Uses Claude when ANTHROPIC_API_KEY is set (falling back to Gemini on any
+    error), otherwise Gemini's free tier — rolling through its model fallback
+    chain on daily-quota 429s. Raises GeminiUnavailable when nothing can serve
+    the request, so callers can fall back to a template.
     """
+    # Prefer Claude when configured; degrade to Gemini, then (via the raised
+    # GeminiUnavailable) to the caller's template.
+    if config.ANTHROPIC_API_KEY:
+        try:
+            return _anthropic_generate(prompt, system=system,
+                                       max_output_tokens=max_output_tokens)
+        except Exception as e:  # auth/network/quota all degrade the same way
+            if not config.GEMINI_API_KEY:
+                raise GeminiUnavailable(f"Anthropic request failed: {e}") from e
+            print(f"  ⚠ Anthropic call failed ({e}); falling back to Gemini")
+
     if not config.GEMINI_API_KEY:
-        raise GeminiUnavailable("GEMINI_API_KEY not set")
+        raise GeminiUnavailable(
+            "no LLM configured — set ANTHROPIC_API_KEY or GEMINI_API_KEY")
 
     body = {
         "contents": [{"parts": [{"text": prompt}]}],

@@ -470,7 +470,16 @@ def send_batch(drafts: list[dict], confirm: bool = False) -> dict:
                 "invalid": bad}
 
     results = []
-    for it in items:
+    # Pace sends (+ jitter) between messages so a batch doesn't look like a
+    # blast and trip Gmail's anti-abuse throttle (the burst-of-sends that gets
+    # SMTP connections reset). Configurable via EMAIL_SEND_DELAY_SECONDS.
+    import time
+    import random
+    from src.core import config
+    delay = max(0, config.EMAIL_SEND_DELAY_SECONDS)
+    for i, it in enumerate(items):
+        if i > 0 and delay:
+            time.sleep(delay + random.uniform(0, 1.5))
         ok = send_email(it["to"], it["name"] or "there", it["subject"], it["body"])
         record_send(it["first"], it["last"], it["domain"], it["name"],
                     it["company"], it["subject"], it["body"], it["to"],

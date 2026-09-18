@@ -20,8 +20,7 @@ role can't surface unless that employer actually sponsored H-1B.
 git clone https://github.com/emhw0930/cold-email-agent.git h1b-job-agent
 cd h1b-job-agent
 python3 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-pip install mcp                        # the MCP runtime
+pip install -r requirements.txt        # includes the MCP runtime (mcp, pinned <2)
 cp .env.example .env                   # add your keys + signature (see docs/SETUP.md)
 python -m src.mcp.server               # serves on stdio
 ```
@@ -30,6 +29,8 @@ The server reads the SQLite DBs that ship **committed** in the repo (USCIS-deriv
 wage data and a ranked job pool), so the read-only tools work on first run. Then register it
 with a client (below) and ask, in any chat:
 *"Does Verkada sponsor H-1B and what do they pay?"* or *"show my top matches."*
+
+**First time? Full step-by-step walkthrough → [docs/ONBOARDING.md](docs/ONBOARDING.md).**
 
 ---
 

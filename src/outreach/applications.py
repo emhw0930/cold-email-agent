@@ -273,12 +273,13 @@ def stats() -> dict:
 
 # ── Google Sheets mirror (auto-refresh) ──────────────────────
 SHEET_TAB = "Job Applications"
+# main data block (Note is written separately at the far right, past the summary)
 _SHEET_HEADERS = ["Company", "Role", "Location", "Applied", "Week", "Furthest Stage",
                   "Outcome", "Cold Email", "Phone Screen", "OA", "1st Round",
-                  "2nd Round", "Note"]
+                  "2nd Round"]
 _SHEET_COLS = ("company", "role", "location", "applied_date", "application_week",
                "furthest_stage", "outcome", "cold_email", "phone_screen", "oa",
-               "round1", "round2", "note")
+               "round1", "round2")
 
 
 def export_to_sheet(tab: str = SHEET_TAB) -> dict:
@@ -307,13 +308,50 @@ def export_to_sheet(tab: str = SHEET_TAB) -> dict:
 
     c = _conn()
     rows = c.execute(
-        f"SELECT {', '.join(_SHEET_COLS)} FROM applications "
+        f"SELECT {', '.join(_SHEET_COLS)}, note FROM applications "
         "ORDER BY created_at DESC, applied_date DESC").fetchall()
     c.close()
     data = [_SHEET_HEADERS] + [[r[k] or "" for k in _SHEET_COLS] for r in rows]
     ws.update(data, value_input_option="RAW")
     ws.format(f"A1:{chr(64 + len(_SHEET_HEADERS))}1", {"textFormat": {"bold": True}})
-    return {"written": len(rows), "url": ss.url + f"#gid={ws.id}"}
+
+    # ── summary panel on the right (cols O.. / R..) ──────────
+    from collections import Counter
+    wk = Counter((r["application_week"] or "(unknown)") for r in rows)
+    dy = Counter((r["applied_date"] or "(unknown)") for r in rows)
+    total = len(rows)
+    n_weeks = len([k for k in wk if k != "(unknown)"])
+    n_days = len([k for k in dy if k != "(unknown)"])
+
+    # Overall + By-Week table anchored at O1
+    week_block = [
+        ["— SUMMARY —", ""],
+        ["Total (entire cycle)", total],
+        ["Distinct weeks", n_weeks],
+        ["Distinct days", n_days],
+        ["", ""],
+        ["By Week", "Apps"],
+    ] + [[w, wk[w]] for w in sorted(wk, reverse=True)]
+
+    # By-Day table anchored at R6 (parallel to "By Week")
+    day_block = [["By Day", "Apps"]] + [[d, dy[d]] for d in sorted(dy, reverse=True)]
+
+    # widen/lengthen the grid so the summary columns (O..S) fit
+    need_rows = max(len(data) + 2, len(week_block) + 2, 6 + len(day_block) + 2, 100)
+    ws.resize(rows=need_rows, cols=22)
+
+    ws.update(week_block, "O1", value_input_option="RAW")
+    ws.update(day_block, "R6", value_input_option="RAW")
+    # Note column pushed to the far right (col U), past the summary panel
+    note_col = [["Note"]] + [[r["note"] or ""] for r in rows]
+    ws.update(note_col, "U1", value_input_option="RAW")
+    ws.format("O1", {"textFormat": {"bold": True}})
+    ws.format("O6:P6", {"textFormat": {"bold": True}})
+    ws.format("R6:S6", {"textFormat": {"bold": True}})
+    ws.format("O2:P4", {"textFormat": {"bold": True}})
+    ws.format("U1", {"textFormat": {"bold": True}})
+    return {"written": len(rows), "weeks": n_weeks, "days": n_days,
+            "url": ss.url + f"#gid={ws.id}"}
 
 
 def _auto_sync():

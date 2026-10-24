@@ -194,6 +194,50 @@ def retry_bounced(max_retries: int = 3, dry_run: bool = False,
     return actions
 
 
+def export_to_sheet(tab: str = "Cold Emails") -> dict:
+    """Mirror the cold-email send log (outreach_state.db) to a tab in the
+    configured Google Sheet, newest-sent first. No-op if Sheets isn't configured.
+    Returns {written, url} or {skipped, reason}."""
+    try:
+        from src.outreach.sheets_logger import sheets_available
+        if not sheets_available():
+            return {"skipped": True, "reason": "Sheets not configured"}
+        import gspread
+        from google.oauth2.service_account import Credentials
+    except Exception as e:
+        return {"skipped": True, "reason": f"sheets unavailable: {e}"}
+
+    creds = Credentials.from_service_account_file(
+        config.SHEETS_SERVICE_ACCOUNT_PATH,
+        scopes=["https://www.googleapis.com/auth/spreadsheets"])
+    gc = gspread.authorize(creds)
+    ss = gc.open_by_key(config.SHEETS_SPREADSHEET_ID)
+    try:
+        ws = ss.worksheet(tab)
+        ws.clear()
+    except gspread.WorksheetNotFound:
+        ws = ss.add_worksheet(title=tab, rows=500, cols=9)
+
+    c = _conn()
+    cols = {r[1] for r in c.execute("PRAGMA table_info(outreach_sends)")}
+    reply_sel = ", reply_status" if "reply_status" in cols else ""
+    rows = c.execute(
+        "SELECT name, company, current_email, status, attempts, subject, "
+        f"updated_at{reply_sel} FROM outreach_sends ORDER BY updated_at DESC").fetchall()
+    c.close()
+
+    headers = ["Name", "Company", "Email", "Status", "Reply", "Attempts",
+               "Subject", "Sent At"]
+    data = [headers]
+    for r in rows:
+        reply = r["reply_status"] if ("reply_status" in cols and r["reply_status"]) else "no_reply"
+        data.append([r["name"], r["company"], r["current_email"], r["status"],
+                     reply, r["attempts"], r["subject"], r["updated_at"]])
+    ws.update(data, value_input_option="RAW")
+    ws.format("A1:H1", {"textFormat": {"bold": True}})
+    return {"written": len(rows), "url": ss.url + f"#gid={ws.id}"}
+
+
 def main():
     ap = argparse.ArgumentParser(description="Check inbox for bounces and retry with other email patterns")
     ap.add_argument("--check", action="store_true", help="report bounces + the retry plan (no send)")
